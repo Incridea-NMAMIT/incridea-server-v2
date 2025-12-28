@@ -7,10 +7,728 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  email     String   @unique
-  password  String
+model RefreshToken {
+  id          String  @id @unique @default(uuid())
+  hashedToken String  @db.Text
+  revoked     Boolean @default(false)
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  id      String           @id @unique @default(cuid())
+  revoked Boolean          @default(false)
+  type    VerificationType @default(EMAIL_VERIFICATION)
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  profileImage String?
+  isVerified   Boolean  @default(false)
+  password     String   @db.Text
+  phoneNumber  String
+  totalXp      Int      @default(0)
+  category     Category @default(INTERNAL)
+  otpHash      String?  @db.Text
+  otpExpiresAt DateTime?
+  
+  collegeId Int     @default(1)
+  College   College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  BranchRep   BranchRep?
+  UserInHotel UserInHotel?
+  Alumni      Alumni?
+  UserRoles   UserRole[]
+
+  XP                  XP[]
+  Judges              Judge[]
+  Organizers          Organizer[]
+  TeamMembers         TeamMember[]
+  PaymentOrders       PaymentOrder[]
+  RefreshTokens       RefreshToken[]
+  CertificateIssue    CertificateIssue[]
+  VerificationToken   VerificationToken[]
+  ProniteRegistration ProniteRegistration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([collegeId])
+  @@index([id])
+}
+
+model UserRole {
+  id     Int  @id @default(autoincrement())
+  role   Role
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, role])
+  @@index([userId])
+}
+
+model Alumni {
+  id               Int      @id @default(autoincrement())
+  yearOfGraduation Int
+  idDocument       String   @db.Text
+
+  userId Int  @unique
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model College {
+  id                 Int         @id @default(autoincrement())
+  name               String
+  details            String?
+  championshipPoints Int         @default(0)
+  type               CollegeType @default(ENGINEERING)
+
+  Users User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Variable {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Setting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Branch {
+  id      Int     @id @default(autoincrement())
+  name    String
+  details String?
+
+  BranchReps BranchRep[]
+  Event      Event[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Event {
+  id          Int           @id @default(autoincrement())
+  name        String
+  description String?       @db.Text
+  image       String?
+  fees        Int           @default(0)
+  venue       String?
+  minTeamSize Int           @default(1)
+  maxTeamSize Int           @default(1)
+  maxTeams    Int?
+  published   Boolean       @default(false)
+  eventType   EventType     @default(INDIVIDUAL)
+  category    EventCategory @default(TECHNICAL)
+  tier        EventTier     @default(GOLD)
+
+  branchId Int
+  Branch   Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  Teams            Team[]
+  Level            Level[]
+  Rounds           Round[]
+  Winner           Winners[]
+  Organizers       Organizer[]
+  CertificateIssue CertificateIssue[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+}
+
+model Team {
+  id        Int     @id @default(autoincrement())
+  name      String
+  roundNo   Int     @default(1)
+  confirmed Boolean @default(false)
+  attended  Boolean @default(false)
+  leaderId  Int?
+
+  eventId Int
+  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  Winner Winners?
+
+  Score             Scores[]
+  Comments          Comments[]
+  QuizScores        QuizScore[]
+  TeamMembers       TeamMember[]
+  QuizSubmissions   QuizSubmission[]
+  EventPaymentOrder EventPaymentOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, eventId])
+  @@index([eventId, roundNo])
+}
+
+model Round {
+  roundNo          Int       @default(1)
+  completed        Boolean   @default(false)
+  notificationSent Boolean   @default(false)
+  selectStatus     Boolean   @default(false)
+  date             DateTime?
+
+  eventId Int
+  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  quizId String? // TODO(Omkar): whats this for?
+  Quiz   Quiz?
+
+  Judges   Judge[]
+  Comments Comments[]
+  Criteria Criteria[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([eventId, roundNo])
+  @@unique([eventId, roundNo])
+  @@index([quizId])
+}
+
+model PaymentOrder {
+  id          String      @id @default(cuid())
+  orderId     String      @unique
+  amount      Int         @default(250)
+  paymentData Json?
+  status      Status      @default(PENDING)
+  type        PaymentType @default(FEST_REGISTRATION)
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model EventPaymentOrder {
+  id          String @id @default(cuid())
+  orderId     String @unique
+  amount      Int    @default(250)
+  paymentData Json?
+  status      Status @default(PENDING)
+
+  teamId Int
+  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+}
+
+model BranchRep {
+  id Int @id @default(autoincrement())
+
+  userId Int  @unique
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  branchId Int
+  Branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, branchId])
+  @@index([branchId, userId])
+}
+
+model Organizer {
+  id Int @id @default(autoincrement())
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  eventId Int
+  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, eventId])
+  @@index([eventId, userId])
+}
+
+model TeamMember {
+  id Int @id @default(autoincrement())
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  teamId Int
+  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, teamId])
+  @@index([teamId, userId])
+}
+
+model Judge {
+  id Int @id @default(autoincrement())
+
+  userId Int  @unique
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  eventId Int
+  roundNo Int
+  Round   Round @relation(fields: [eventId, roundNo], references: [eventId, roundNo], onDelete: Cascade)
+
+  Scores   Scores[]
+  Comments Comments[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, eventId, roundNo])
+  @@index([eventId, roundNo, userId])
+}
+
+model Criteria {
+  id   Int          @id @default(autoincrement())
+  name String
+  type CriteriaType @default(NUMBER)
+
+  eventId Int
+  roundNo Int
+  Round   Round @relation(fields: [eventId, roundNo], references: [eventId, roundNo], onDelete: Cascade)
+
+  Score Scores[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId, roundNo])
+}
+
+model Scores {
+  id Int @id @default(autoincrement())
+
+  score String
+
+  teamId Int
+  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  criteriaId Int
+  Criteria   Criteria @relation(fields: [criteriaId], references: [id], onDelete: Cascade)
+
+  judgeId Int
+  Judge   Judge @relation(fields: [judgeId], references: [userId])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, criteriaId, judgeId])
+  @@index([teamId, criteriaId])
+  @@index([criteriaId])
+  @@index([judgeId])
+}
+
+model Comments {
+  id Int @id @default(autoincrement())
+
+  comment String
+
+  teamId Int
+  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  eventId Int
+  roundNo Int
+  Round   Round @relation(fields: [eventId, roundNo], references: [eventId, roundNo], onDelete: Cascade)
+
+  judgeId Int
+  Judge   Judge @relation(fields: [judgeId], references: [userId])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, eventId, roundNo, judgeId])
+  @@index([teamId])
+  @@index([eventId, roundNo])
+  @@index([judgeId])
+}
+
+model Winners {
+  id Int @id @default(autoincrement())
+
+  notificationSent Boolean    @default(false)
+  type             WinnerType
+
+  teamId Int  @unique
+  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  eventId Int
+  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  Level Level[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, type])
+  @@index([teamId])
+  @@index([eventId])
+}
+
+model ProniteRegistration {
+  id Int @id @default(autoincrement())
+
+  proniteDay ProniteDay
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, proniteDay])
+  @@index([userId])
+}
+
+model CertificateIssue {
+  id Int @id @default(autoincrement())
+
+  issued Boolean @default(false)
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  eventId Int
+  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventId])
+  @@index([userId])
+  @@index([eventId])
+}
+
+model Options {
+  id String @id @default(cuid())
+
+  value    String  @db.Text
+  isAnswer Boolean @default(false)
+
+  questionId String
+  Question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  Submissions QuizSubmission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([questionId])
+}
+
+model QuizSubmission {
+  id String @id @default(cuid())
+
+  teamId Int
+  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  optionId String
+  Options  Options @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([optionId])
+}
+
+model QuizScore {
+  id String @id @default(cuid())
+
+  score     Int     @default(0)
+  timeTaken Float
+  flags     Int     @default(0)
+  allowUser Boolean @default(true)
+
+  teamId Int
+  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  quizId String
+  Quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, quizId])
+  @@index([quizId])
+  @@index([teamId])
+}
+
+model Quiz {
+  id String @id @default(cuid())
+
+  name             String
+  description      String?  @db.Text
+  startTime        DateTime
+  endTime          DateTime
+  allowAttempts    Boolean  @default(false)
+  points           Int      @default(1)
+  qualifyNext      Int      @default(5)
+  password         String
+  completed        Boolean  @default(false)
+  overridePassword String
+
+  roundId Int
+  eventId Int
+  Round   Round @relation(fields: [eventId, roundId], references: [eventId, roundNo], onDelete: Cascade)
+
+  Questions  Question[]
+  QuizScores QuizScore[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, roundId])
+  @@index([roundId])
+}
+
+model Question {
+  id String @id @default(cuid())
+
+  question    String  @db.Text
+  description String? @db.Text
+  isCode      Boolean @default(false)
+  image       String?
+
+  quizId String
+  Quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  options Options[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([quizId])
+}
+
+model Level {
+  id Int @id @default(autoincrement())
+
+  point Int @default(0)
+
+  EventId Int?
+  Event   Event? @relation(fields: [EventId], references: [id], onDelete: Cascade)
+
+  winnerId Int?
+  Winner   Winners? @relation(fields: [winnerId], references: [id], onDelete: SetNull)
+
+  XP XP[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([EventId])
+  @@index([winnerId])
+}
+
+model XP {
+  id Int @id @default(autoincrement())
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  levelId Int
+  Level   Level @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, levelId])
+  @@index([userId])
+  @@index([levelId])
+}
+
+model Hotel {
+  id Int @id @default(autoincrement())
+
+  name    String  @unique
+  details String?
+  price   Int
+
+  UserInHotel UserInHotel[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserInHotel {
+  id Int @id @default(autoincrement())
+
+  IdCard   String?
+  room     String?
+  AC       Boolean                    @default(false)
+  checkIn  DateTime?
+  checkOut DateTime?
+  gender   Gender
+  status   AccommodationBookingStatus @default(PENDING)
+
+  hotelId Int
+  Hotel   Hotel @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+
+  userId Int  @unique
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([hotelId])
+}
+
+model TechTeamMember {
+  id String @id @default(cuid())
+
+  name      String
+  role      String
+  priority  Int
+  instagram String?
+  github    String?
+  linkedin  String?
+  imageUrl  String?
+  quote     String
+
+  published Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum AccommodationBookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum ProniteDay {
+  Day1
+  Day2
+}
+
+enum PaymentType {
+  FEST_REGISTRATION
+  EVENT_REGISTRATION
+}
+
+enum Role {
+  USER
+  PARTICIPANT
+  ADMIN
+  JUDGE
+  JURY
+}
+
+enum Status {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum VerificationType {
+  RESET_PASSWORD
+  EMAIL_VERIFICATION
+}
+
+enum EventType {
+  INDIVIDUAL
+  TEAM
+  INDIVIDUAL_MULTIPLE_ENTRY
+  TEAM_MULTIPLE_ENTRY
+}
+
+enum EventCategory {
+  TECHNICAL
+  NON_TECHNICAL
+  CORE
+  SPECIAL
+}
+
+enum EventTier {
+  DIAMOND
+  GOLD
+  SILVER
+  BRONZE
+}
+
+enum CollegeType {
+  ENGINEERING
+  NON_ENGINEERING
+  OTHER
+}
+
+enum CriteriaType {
+  TEXT
+  NUMBER
+  TIME
+}
+
+enum WinnerType {
+  WINNER
+  RUNNER_UP
+  SECOND_RUNNER_UP
+}
+
+enum DayType {
+  Day1
+  Day2
+  Day3
+  Day4
+}
+
+enum Category {
+  INTERNAL
+  EXTERNAL
+  ALUMNI
 }

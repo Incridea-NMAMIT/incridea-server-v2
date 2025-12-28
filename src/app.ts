@@ -3,6 +3,11 @@ import express from 'express'
 import helmet from 'helmet'
 import authRoutes from './routes/authRoutes'
 import protectedRoutes from './routes/protectedRoutes'
+import collegeRoutes from './routes/collegeRoutes'
+import adminRoutes from './routes/adminRoutes'
+import publicRoutes from './routes/publicRoutes'
+import branchRepRoutes from './routes/branchRepRoutes'
+import { uploadthingHandler } from './uploadthing/express'
 import { errorHandler } from './middlewares/errorHandler'
 
 const app = express()
@@ -17,6 +22,11 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/protected', protectedRoutes)
+app.use('/api/colleges', collegeRoutes)
+app.use('/api/admin', adminRoutes)
+app.use('/api/public', publicRoutes)
+app.use('/api/branch-rep', branchRepRoutes)
+app.use('/api/uploadthing', uploadthingHandler)
 
 app.use((_req, res) => {
   res.status(404).json({ message: 'Route not found' })

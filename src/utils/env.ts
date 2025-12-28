@@ -8,6 +8,14 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(10),
   JWT_EXPIRES_IN: z.string().min(1),
   PORT: z.string().optional(),
+  SMTP_HOST: z.string().min(1),
+  SMTP_PORT: z.string().min(1),
+  SMTP_USER: z.string().min(1),
+  SMTP_PASS: z.string().min(1),
+  MAIL_FROM: z.string().min(1),
+  FRONTEND_URL: z.string().url().optional(),
+  UPLOADTHING_SECRET: z.string().min(1).optional(),
+  UPLOADTHING_APP_ID: z.string().min(1).optional(),
 })
 
 const parsed = envSchema.safeParse(process.env)
@@ -23,4 +31,16 @@ export const env = {
   jwtSecret: parsed.data.JWT_SECRET,
   jwtExpiresIn: parsed.data.JWT_EXPIRES_IN,
   port: parsed.data.PORT ?? '4000',
+  frontendUrl: parsed.data.FRONTEND_URL ?? 'http://localhost:5173',
+  uploadthing: {
+    secret: parsed.data.UPLOADTHING_SECRET,
+    appId: parsed.data.UPLOADTHING_APP_ID,
+  },
+  smtp: {
+    host: parsed.data.SMTP_HOST,
+    port: Number(parsed.data.SMTP_PORT),
+    user: parsed.data.SMTP_USER,
+    pass: parsed.data.SMTP_PASS,
+    from: parsed.data.MAIL_FROM,
+  },
 }
