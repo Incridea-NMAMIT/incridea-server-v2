@@ -1,6 +1,9 @@
 import type { Request, Response, NextFunction } from 'express'
-import { listSettings, updateSetting, listVariables, upsertVariable } from '../services/adminService'
-import type { UpdateSettingInput, UpsertVariableInput } from '../schemas/adminSchemas'
+import { Role } from '@prisma/client'
+import { listSettings, updateSetting, listVariables, upsertVariable, listUsersWithRoles, setUserRoles } from '../services/adminService'
+import { listWebLogs, logWebEvent } from '../services/logService'
+import type { UpdateSettingInput, UpsertVariableInput, UpdateUserRolesInput } from '../schemas/adminSchemas'
+import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
 
 export async function getSettings(req: Request, res: Response, next: NextFunction) {
   try {
@@ -11,11 +14,15 @@ export async function getSettings(req: Request, res: Response, next: NextFunctio
   }
 }
 
-export async function putSetting(req: Request, res: Response, next: NextFunction) {
+export async function putSetting(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const { key } = req.params
     const payload = req.body as UpdateSettingInput
     const setting = await updateSetting(key, payload)
+    void logWebEvent({
+      message: `Setting updated: ${key} -> ${payload.value}`,
+      userId: req.user?.id ?? null,
+    })
     return res.status(200).json({ setting })
   } catch (error) {
     return next(error)
@@ -31,12 +38,68 @@ export async function getVariables(req: Request, res: Response, next: NextFuncti
   }
 }
 
-export async function putVariable(req: Request, res: Response, next: NextFunction) {
+export async function putVariable(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const { key } = req.params
     const payload = req.body as UpsertVariableInput
     const variable = await upsertVariable(key, payload)
+    void logWebEvent({
+      message: `Variable upserted: ${key}`,
+      userId: req.user?.id ?? null,
+    })
     return res.status(200).json({ variable })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function getUsers(req: Request, res: Response, next: NextFunction) {
+  try {
+    const search = typeof req.query.q === 'string' ? req.query.q.trim() : undefined
+    const users = await listUsersWithRoles(search)
+
+    return res.status(200).json({
+      users: users.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        phoneNumber: u.phoneNumber,
+        roles: u.UserRoles.map((r) => r.role),
+      })),
+      availableRoles: Object.values(Role),
+    })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function putUserRoles(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const userId = Number(req.params.userId)
+    if (!Number.isFinite(userId)) {
+      return res.status(400).json({ message: 'Invalid user id' })
+    }
+
+    const payload = req.body as UpdateUserRolesInput
+    const roles = await setUserRoles(userId, payload)
+
+    void logWebEvent({
+      message: `Roles updated for user ${userId}: ${roles.join(',')}`,
+      userId: req.user?.id ?? null,
+    })
+
+    return res.status(200).json({ user: { id: userId, roles }, message: 'Roles updated' })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function getWebLogs(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const page = Number(req.query.page ?? '1')
+    const pageSize = Number(req.query.pageSize ?? '50')
+    const logs = await listWebLogs(Number.isFinite(page) && page > 0 ? page : 1, pageSize)
+    return res.status(200).json(logs)
   } catch (error) {
     return next(error)
   }

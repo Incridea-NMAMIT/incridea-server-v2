@@ -1,4 +1,4 @@
-const { PrismaClient } = require('@prisma/client')
+const { PrismaClient, CommitteeName } = require('@prisma/client')
 
 const prisma = new PrismaClient()
 
@@ -14,6 +14,19 @@ async function ensureVariable(key, defaultValue) {
   if (!existing) {
     await prisma.variable.create({ data: { key, value: defaultValue } })
   }
+}
+
+async function ensureCommittees() {
+  const committees = Object.values(CommitteeName)
+  await Promise.all(
+    committees.map((name) =>
+      prisma.committee.upsert({
+        where: { name },
+        update: {},
+        create: { name },
+      }),
+    ),
+  )
 }
 
 async function ensureCollege(data) {
@@ -47,6 +60,7 @@ async function syncCollegeSequence() {
 async function main() {
   await ensureSetting('isRegistrationOpen', false)
   await ensureSetting('isSpotRegistration', false)
+  await ensureSetting('isCommitteeRegOpen', false)
 
   const variableSeeds = [
     'internalRegistrationFeeGen',
@@ -60,10 +74,10 @@ async function main() {
   await Promise.all(variableSeeds.map((key) => ensureVariable(key, '0')))
 
   const eventDaySeeds = [
-    { key: 'incrideaDay1', value: '2025-03-05T00:00:00.000Z' },
-    { key: 'incrideaDay2', value: '2025-03-06T00:00:00.000Z' },
-    { key: 'incrideaDay3', value: '2025-03-07T00:00:00.000Z' },
-    { key: 'incrideaDay4', value: '2025-03-08T00:00:00.000Z' },
+    { key: 'incrideaDay1', value: '2026-03-05T00:00:00.000Z' },
+    { key: 'incrideaDay2', value: '2026-03-06T00:00:00.000Z' },
+    { key: 'incrideaDay3', value: '2026-03-07T00:00:00.000Z' },
+    { key: 'incrideaDay4', value: '2026-03-08T00:00:00.000Z' },
   ]
 
   await Promise.all(eventDaySeeds.map(({ key, value }) => ensureVariable(key, value)))
@@ -94,6 +108,8 @@ async function main() {
 
   await syncCollegeSequence()
   await Promise.all(collegeSeeds.map((college) => ensureCollege(college)))
+
+  await ensureCommittees()
 }
 
 main()

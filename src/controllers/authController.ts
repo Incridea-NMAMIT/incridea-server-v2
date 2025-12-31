@@ -8,6 +8,7 @@ import {
   changePassword,
   requestPasswordReset,
   resetPasswordWithToken,
+  getUserCommitteeSnapshot,
 } from '../services/authService'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import type {
@@ -18,10 +19,16 @@ import type {
   ResetPasswordRequestInput,
   ResetPasswordConfirmInput,
 } from '../schemas/authSchemas'
+import { logWebEvent } from '../services/logService'
 
 export async function signup(req: Request, res: Response, next: NextFunction) {
   try {
     const user = await createUserWithProfile(req.body as SignupInput)
+    const committee = await getUserCommitteeSnapshot(user.id)
+    void logWebEvent({
+      message: `Signup success for ${user.email}`,
+      userId: user.id,
+    })
     return res.status(201).json({
       message: 'User saved. Please verify your email with the OTP sent.',
       user: {
@@ -37,6 +44,9 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
         phoneNumber: user.phoneNumber,
         yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
         alumniIdDocument: user.Alumni?.idDocument ?? null,
+        committeeRole: committee.committeeRole,
+        committeeName: committee.committeeName,
+        committeeStatus: committee.committeeStatus,
         createdAt: user.createdAt,
       },
     })
@@ -54,6 +64,13 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     }
     const token = generateToken(user.id)
 
+    const committee = await getUserCommitteeSnapshot(user.id)
+
+    void logWebEvent({
+      message: `Login success for ${user.email}`,
+      userId: user.id,
+    })
+
     return res.status(200).json({
       message: 'Logged in',
       token,
@@ -70,6 +87,9 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         phoneNumber: user.phoneNumber,
         yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
         alumniIdDocument: user.Alumni?.idDocument ?? null,
+        committeeRole: committee.committeeRole,
+        committeeName: committee.committeeName,
+        committeeStatus: committee.committeeStatus,
         createdAt: user.createdAt,
       },
     })
@@ -83,6 +103,12 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
     const { email, otp } = req.body as VerifyOtpInput
     const user = await verifyOtpForUser(email, otp)
     const token = generateToken(user.id)
+    const committee = await getUserCommitteeSnapshot(user.id)
+
+    void logWebEvent({
+      message: `OTP verified for ${email}`,
+      userId: user.id,
+    })
 
     return res.status(200).json({
       message: 'Email verified successfully',
@@ -100,6 +126,9 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
         phoneNumber: user.phoneNumber,
         yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
         alumniIdDocument: user.Alumni?.idDocument ?? null,
+        committeeRole: committee.committeeRole,
+        committeeName: committee.committeeName,
+        committeeStatus: committee.committeeStatus,
         createdAt: user.createdAt,
       },
     })
@@ -114,6 +143,7 @@ export async function me(req: AuthenticatedRequest, res: Response, next: NextFun
       return res.status(401).json({ message: 'Unauthorized' })
     }
     const user = await getUserById(req.user.id)
+    const committee = await getUserCommitteeSnapshot(user.id)
     return res.status(200).json({
       user: {
         id: user.id,
@@ -128,6 +158,9 @@ export async function me(req: AuthenticatedRequest, res: Response, next: NextFun
         phoneNumber: user.phoneNumber,
         yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
         alumniIdDocument: user.Alumni?.idDocument ?? null,
+        committeeRole: committee.committeeRole,
+        committeeName: committee.committeeName,
+        committeeStatus: committee.committeeStatus,
         createdAt: user.createdAt,
       },
     })
@@ -143,6 +176,10 @@ export async function changePasswordHandler(req: AuthenticatedRequest, res: Resp
     }
     const payload = req.body as ChangePasswordInput
     const result = await changePassword(req.user.id, payload)
+    void logWebEvent({
+      message: 'Password changed',
+      userId: req.user.id,
+    })
     return res.status(200).json(result)
   } catch (error) {
     return next(error)
@@ -153,6 +190,9 @@ export async function requestPasswordResetHandler(req: Request, res: Response, n
   try {
     const payload = req.body as ResetPasswordRequestInput
     const result = await requestPasswordReset(payload)
+    void logWebEvent({
+      message: `Password reset requested for ${payload.email}`,
+    })
     return res.status(200).json(result)
   } catch (error) {
     return next(error)
@@ -163,6 +203,9 @@ export async function resetPasswordHandler(req: Request, res: Response, next: Ne
   try {
     const payload = req.body as ResetPasswordConfirmInput
     const result = await resetPasswordWithToken(payload)
+    void logWebEvent({
+      message: 'Password reset via token',
+    })
     return res.status(200).json(result)
   } catch (error) {
     return next(error)

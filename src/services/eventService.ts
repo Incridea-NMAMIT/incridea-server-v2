@@ -52,10 +52,10 @@ export async function getEventDayConfig() {
   })
 
   const defaults: Record<EventDayKey, string> = {
-    incrideaDay1: '2025-03-05T00:00:00.000Z',
-    incrideaDay2: '2025-03-06T00:00:00.000Z',
-    incrideaDay3: '2025-03-07T00:00:00.000Z',
-    incrideaDay4: '2025-03-08T00:00:00.000Z',
+    incrideaDay1: '2026-03-05T00:00:00.000Z',
+    incrideaDay2: '2026-03-06T00:00:00.000Z',
+    incrideaDay3: '2026-03-07T00:00:00.000Z',
+    incrideaDay4: '2026-03-08T00:00:00.000Z',
   }
 
   const lookup = (key: EventDayKey) =>

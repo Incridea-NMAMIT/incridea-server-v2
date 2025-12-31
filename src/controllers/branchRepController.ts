@@ -7,8 +7,9 @@ import type {
   PublishBranchEventInput,
   UpdateBranchEventInput,
 } from '../schemas/branchRepSchemas'
+import { logWebEvent } from '../services/logService'
 
-function ensureAuthUser(req: AuthenticatedRequest, res: Response) {
+export function ensureAuthUser(req: AuthenticatedRequest, res: Response) {
   if (!req.user?.id) {
     res.status(401).json({ message: 'Unauthorized' })
     return null
@@ -115,10 +116,23 @@ export async function createBranchRepEvent(req: AuthenticatedRequest, res: Respo
     const event = await prisma.event.create({
       data: {
         name: payload.name,
+        description: payload.description,
+        venue: payload.venue,
+        fees: payload.fees,
+        minTeamSize: payload.minTeamSize,
+        maxTeamSize: payload.maxTeamSize,
+        maxTeams: payload.maxTeams,
         eventType: payload.eventType,
+        category: payload.category,
+        tier: payload.tier,
         branchId: branchRep.branchId,
       },
       select: { id: true, name: true, eventType: true, published: true },
+    })
+
+    void logWebEvent({
+      message: `BranchRep created event ${event.name} (${event.id})`,
+      userId,
     })
 
     return res.status(201).json({ event })
@@ -166,6 +180,11 @@ export async function addOrganizerToEvent(req: AuthenticatedRequest, res: Respon
     const organizer = await prisma.organizer.create({
       data: { eventId: event.id, userId: organizerUser.id },
       select: { userId: true, User: { select: { name: true, email: true, phoneNumber: true } } },
+    })
+
+    void logWebEvent({
+      message: `BranchRep added organizer ${organizerUser.email} to event ${event.id}`,
+      userId,
     })
 
     return res.status(201).json({
@@ -218,6 +237,11 @@ export async function removeOrganizerFromEvent(
 
     await prisma.organizer.delete({ where: { id: organizer.id } })
 
+    void logWebEvent({
+      message: `BranchRep removed organizer ${organizerUserId} from event ${event.id}`,
+      userId,
+    })
+
     return res.status(200).json({ message: 'Organizer removed' })
   } catch (error) {
     return next(error)
@@ -253,6 +277,11 @@ export async function deleteBranchEvent(req: AuthenticatedRequest, res: Response
     }
 
     await prisma.event.delete({ where: { id: event.id } })
+
+    void logWebEvent({
+      message: `BranchRep deleted event ${event.id}`,
+      userId,
+    })
 
     return res.status(200).json({ message: 'Event deleted' })
   } catch (error) {
@@ -369,6 +398,11 @@ export async function updateBranchEvent(req: AuthenticatedRequest, res: Response
       },
     })
 
+    void logWebEvent({
+      message: `BranchRep updated event ${event.id}`,
+      userId,
+    })
+
     return res.status(200).json({ event: updated })
   } catch (error) {
     return next(error)
@@ -408,6 +442,11 @@ export async function toggleBranchEventPublish(req: AuthenticatedRequest, res: R
         name: true,
         published: true,
       },
+    })
+
+    void logWebEvent({
+      message: `BranchRep set publish=${publish} for event ${event.id}`,
+      userId,
     })
 
     return res.status(200).json({ event: updated })

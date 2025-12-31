@@ -6,7 +6,7 @@ config()
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(10),
-  JWT_EXPIRES_IN: z.string().min(1),
+  JWT_EXPIRES_IN: z.string().min(1).default('365d'),
   PORT: z.string().optional(),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.string().min(1),
@@ -29,7 +29,7 @@ if (!parsed.success) {
 export const env = {
   databaseUrl: parsed.data.DATABASE_URL,
   jwtSecret: parsed.data.JWT_SECRET,
-  jwtExpiresIn: parsed.data.JWT_EXPIRES_IN,
+  jwtExpiresIn: parsed.data.JWT_EXPIRES_IN ?? '365d',
   port: parsed.data.PORT ?? '4000',
   frontendUrl: parsed.data.FRONTEND_URL ?? 'http://localhost:5173',
   uploadthing: {

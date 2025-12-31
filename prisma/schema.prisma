@@ -36,18 +36,18 @@ model VerificationToken {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   name         String
-  email        String   @unique
+  email        String    @unique
   profileImage String?
-  isVerified   Boolean  @default(false)
-  password     String   @db.Text
+  isVerified   Boolean   @default(false)
+  password     String    @db.Text
   phoneNumber  String
-  totalXp      Int      @default(0)
-  category     Category @default(INTERNAL)
-  otpHash      String?  @db.Text
+  totalXp      Int       @default(0)
+  category     Category  @default(INTERNAL)
+  otpHash      String?   @db.Text
   otpExpiresAt DateTime?
-  
+
   collegeId Int     @default(1)
   College   College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
 
@@ -56,26 +56,31 @@ model User {
   Alumni      Alumni?
   UserRoles   UserRole[]
 
-  XP                  XP[]
-  Judges              Judge[]
-  Organizers          Organizer[]
-  TeamMembers         TeamMember[]
-  PaymentOrders       PaymentOrder[]
-  RefreshTokens       RefreshToken[]
-  CertificateIssue    CertificateIssue[]
-  VerificationToken   VerificationToken[]
-  ProniteRegistration ProniteRegistration[]
+  CommitteeMembership CommitteeMembership?
+  HeadOfCommittee     Committee[]          @relation("CommitteeHeadUser")
+  CoHeadOfCommittee   Committee[]          @relation("CommitteeCoHeadUser")
+
+  XP                XP[]
+  Judges            Judge[]
+  Organizers        Organizer[]
+  TeamMembers       TeamMember[]
+  PaymentOrders     PaymentOrder[]
+  RefreshTokens     RefreshToken[]
+  CertificateIssue  CertificateIssue[]
+  VerificationToken VerificationToken[]
+  PronitePass       PronitePass[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  WebLog    WebLog[]
 
   @@index([collegeId])
   @@index([id])
 }
 
 model UserRole {
-  id     Int  @id @default(autoincrement())
-  role   Role
+  id   Int  @id @default(autoincrement())
+  role Role
 
   userId Int
   User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -88,9 +93,9 @@ model UserRole {
 }
 
 model Alumni {
-  id               Int      @id @default(autoincrement())
+  id               Int    @id @default(autoincrement())
   yearOfGraduation Int
-  idDocument       String   @db.Text
+  idDocument       String @db.Text
 
   userId Int  @unique
   User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -140,6 +145,38 @@ model Branch {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Committee {
+  id           Int           @id @default(autoincrement())
+  name         CommitteeName @unique
+  headUserId   Int?          @unique
+  coHeadUserId Int?          @unique
+
+  headUser   User? @relation("CommitteeHeadUser", fields: [headUserId], references: [id], onDelete: SetNull)
+  coHeadUser User? @relation("CommitteeCoHeadUser", fields: [coHeadUserId], references: [id], onDelete: SetNull)
+
+  Members CommitteeMembership[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CommitteeMembership {
+  id     Int                       @id @default(autoincrement())
+  status CommitteeMembershipStatus @default(PENDING)
+
+  userId Int  @unique
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  committeeId Int
+  Committee   Committee @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([committeeId, userId])
+  @@index([committeeId, status])
 }
 
 model Event {
@@ -290,6 +327,17 @@ model Organizer {
   @@index([eventId, userId])
 }
 
+model WebLog {
+  id        Int      @id @default(autoincrement())
+  message   String   @db.Text
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+}
+
 model TeamMember {
   id Int @id @default(autoincrement())
 
@@ -412,7 +460,7 @@ model Winners {
   @@index([eventId])
 }
 
-model ProniteRegistration {
+model PronitePass {
   id Int @id @default(autoincrement())
 
   proniteDay ProniteDay
@@ -622,24 +670,6 @@ model UserInHotel {
   @@index([hotelId])
 }
 
-model TechTeamMember {
-  id String @id @default(cuid())
-
-  name      String
-  role      String
-  priority  Int
-  instagram String?
-  github    String?
-  linkedin  String?
-  imageUrl  String?
-  quote     String
-
-  published Boolean @default(false)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
 enum Gender {
   MALE
   FEMALE
@@ -700,6 +730,33 @@ enum EventTier {
   GOLD
   SILVER
   BRONZE
+}
+
+enum CommitteeName {
+  MEDIA
+  SOCIAL_MEDIA
+  THORANA
+  EVENT_MANAGEMENT
+  ACCOMMODATION
+  DIGITAL
+  INAUGURAL
+  CREW
+  HOUSE_KEEPING
+  FOOD
+  TRANSPORT
+  PUBLICITY
+  DOCUMENTATION
+  FINANCE
+  CULTURAL
+  REQUIREMENTS
+  DISCIPLINARY
+  TECHNICAL
+  JURY
+}
+
+enum CommitteeMembershipStatus {
+  PENDING
+  APPROVED
 }
 
 enum CollegeType {

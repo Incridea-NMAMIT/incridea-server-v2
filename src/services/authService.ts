@@ -11,6 +11,7 @@ import type {
 } from '../schemas/authSchemas'
 import { Category, CollegeType, Gender, Role } from '@prisma/client'
 import { sendEmail } from '../utils/mailer'
+import type { CommitteeMembershipStatus } from '@prisma/client'
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10)
 }
@@ -378,4 +379,51 @@ export async function resetPasswordWithToken(payload: ResetPasswordConfirmInput)
   await prisma.user.update({ where: { id: user.id }, data: { password: newHash } })
 
   return { message: 'Password reset successfully' }
+}
+
+export async function getUserCommitteeSnapshot(userId: number): Promise<{
+  committeeRole: 'HEAD' | 'CO_HEAD' | 'MEMBER' | null
+  committeeName: string | null
+  committeeStatus: CommitteeMembershipStatus | null
+}> {
+  const headCommittee = await prisma.committee.findFirst({
+    where: { headUserId: userId },
+    select: { name: true },
+  })
+
+  if (headCommittee) {
+    return {
+      committeeRole: 'HEAD',
+      committeeName: headCommittee.name,
+      committeeStatus: 'APPROVED',
+    }
+  }
+
+  const coHeadCommittee = await prisma.committee.findFirst({
+    where: { coHeadUserId: userId },
+    select: { name: true },
+  })
+
+  if (coHeadCommittee) {
+    return {
+      committeeRole: 'CO_HEAD',
+      committeeName: coHeadCommittee.name,
+      committeeStatus: 'APPROVED',
+    }
+  }
+
+  const membership = await prisma.committeeMembership.findUnique({
+    where: { userId },
+    select: { status: true, Committee: { select: { name: true } } },
+  })
+
+  if (membership) {
+    return {
+      committeeRole: 'MEMBER',
+      committeeName: membership.Committee?.name ?? null,
+      committeeStatus: membership.status,
+    }
+  }
+
+  return { committeeRole: null, committeeName: null, committeeStatus: null }
 }
