@@ -4,8 +4,9 @@ import { listSettings, updateSetting, listVariables, upsertVariable, listUsersWi
 import { listWebLogs, logWebEvent } from '../services/logService'
 import type { UpdateSettingInput, UpsertVariableInput, UpdateUserRolesInput } from '../schemas/adminSchemas'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
+import { getIO } from '../socket'
 
-export async function getSettings(req: Request, res: Response, next: NextFunction) {
+export async function getSettings(_req: Request, res: Response, next: NextFunction) {
   try {
     const settings = await listSettings()
     return res.status(200).json({ settings })
@@ -29,7 +30,7 @@ export async function putSetting(req: AuthenticatedRequest, res: Response, next:
   }
 }
 
-export async function getVariables(req: Request, res: Response, next: NextFunction) {
+export async function getVariables(_req: Request, res: Response, next: NextFunction) {
   try {
     const variables = await listVariables()
     return res.status(200).json({ variables })
@@ -87,6 +88,13 @@ export async function putUserRoles(req: AuthenticatedRequest, res: Response, nex
       message: `Roles updated for user ${userId}: ${roles.join(',')}`,
       userId: req.user?.id ?? null,
     })
+
+    try {
+      getIO().to(`user-${userId}`).emit('ROLE_UPDATED', { roles })
+    } catch (error) {
+       // eslint-disable-next-line no-console
+       console.error('Socket notification failed', error)
+    }
 
     return res.status(200).json({ user: { id: userId, roles }, message: 'Roles updated' })
   } catch (error) {

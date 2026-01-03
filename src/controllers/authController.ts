@@ -39,7 +39,8 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
         collegeId: user.collegeId,
         roles: user.UserRoles?.map((r) => r.role) ?? [],
         isBranchRep: Boolean(user.BranchRep),
-        isOrganizer: Array.isArray(user.Organizers) && user.Organizers.length > 0,
+        isOrganiser: Array.isArray(user.Organisers) && user.Organisers.length > 0,
+        isJudge: Array.isArray(user.Judges) && user.Judges.length > 0,
         isVerified: user.isVerified,
         phoneNumber: user.phoneNumber,
         yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
@@ -82,7 +83,8 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         collegeId: user.collegeId,
         roles: user.UserRoles?.map((r) => r.role) ?? [],
         isBranchRep: Boolean(user.BranchRep),
-        isOrganizer: Array.isArray(user.Organizers) && user.Organizers.length > 0,
+        isOrganiser: Array.isArray(user.Organisers) && user.Organisers.length > 0,
+        isJudge: Array.isArray(user.Judges) && user.Judges.length > 0,
         isVerified: user.isVerified,
         phoneNumber: user.phoneNumber,
         yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
@@ -121,7 +123,8 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
         collegeId: user.collegeId,
         roles: user.UserRoles?.map((r) => r.role) ?? [],
         isBranchRep: Boolean(user.BranchRep),
-        isOrganizer: Array.isArray(user.Organizers) && user.Organizers.length > 0,
+        isOrganiser: Array.isArray(user.Organisers) && user.Organisers.length > 0,
+        isJudge: Array.isArray(user.Judges) && user.Judges.length > 0,
         isVerified: user.isVerified,
         phoneNumber: user.phoneNumber,
         yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
@@ -153,7 +156,8 @@ export async function me(req: AuthenticatedRequest, res: Response, next: NextFun
         collegeId: user.collegeId,
         roles: user.UserRoles?.map((r) => r.role) ?? [],
         isBranchRep: Boolean(user.BranchRep),
-        isOrganizer: Array.isArray(user.Organizers) && user.Organizers.length > 0,
+        isOrganiser: Array.isArray(user.Organisers) && user.Organisers.length > 0,
+        isJudge: Array.isArray(user.Judges) && user.Judges.length > 0,
         isVerified: user.isVerified,
         phoneNumber: user.phoneNumber,
         yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
@@ -207,6 +211,24 @@ export async function resetPasswordHandler(req: Request, res: Response, next: Ne
       message: 'Password reset via token',
     })
     return res.status(200).json(result)
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function verifyMasterKey(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { key } = req.body
+    if (!process.env.MASTER_KEY) {
+      console.warn('MASTER_KEY is not set in environment variables')
+      return res.status(500).json({ message: 'Server configuration error' })
+    }
+    
+    if (key === process.env.MASTER_KEY) {
+      return res.status(200).json({ success: true, message: 'Master key verified' })
+    } else {
+      return res.status(401).json({ success: false, message: 'Invalid master key' })
+    }
   } catch (error) {
     return next(error)
   }

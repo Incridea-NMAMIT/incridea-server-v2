@@ -8,9 +8,12 @@ import adminRoutes from './routes/adminRoutes'
 import publicRoutes from './routes/publicRoutes'
 import branchRepRoutes from './routes/branchRepRoutes'
 import committeeRoutes from './routes/committeeRoutes'
+import documentationRoutes from './routes/documentationRoutes'
 import { uploadthingHandler } from './uploadthing/express'
 import { errorHandler } from './middlewares/errorHandler'
 import { auditLogger } from './middlewares/auditLogger'
+
+import organiserRoutes from './routes/organiserRoutes'
 
 const app = express()
 
@@ -23,13 +26,23 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok' })
 })
 
+import registrationRoutes from './routes/registrationRoutes'
+
+import quizRoutes from './routes/quizRoutes'
+import judgingRoutes from './routes/judgingRoutes'
+
 app.use('/api/auth', authRoutes)
 app.use('/api/protected', protectedRoutes)
 app.use('/api/colleges', collegeRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/public', publicRoutes)
 app.use('/api/branch-rep', branchRepRoutes)
+app.use('/api/organiser', organiserRoutes)
 app.use('/api/committee', committeeRoutes)
+app.use('/api/documentation', documentationRoutes)
+app.use('/api/registration', registrationRoutes)
+app.use('/api/quiz', quizRoutes)
+app.use('/api/judge', judgingRoutes)
 app.use('/api/uploadthing', uploadthingHandler)
 
 app.use((_req, res) => {

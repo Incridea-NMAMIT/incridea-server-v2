@@ -3,7 +3,7 @@ import { authenticateJWT } from '../middlewares/authMiddleware'
 import { requireBranchRep } from '../middlewares/requireBranchRep'
 import { validateRequest } from '../middlewares/validateRequest'
 import {
-  addOrganizerToEvent,
+  addOrganiserToEvent,
   createBranchRepEvent,
   deleteBranchEvent,
   listBranchRepEvents,
@@ -11,10 +11,10 @@ import {
   updateBranchEvent,
   toggleBranchEventPublish,
   searchUsersForBranchRep,
-  removeOrganizerFromEvent,
+  removeOrganiserFromEvent,
 } from '../controllers/branchRepController'
 import {
-  addOrganizerSchema,
+  addOrganiserSchema,
   createBranchEventSchema,
   publishBranchEventSchema,
   updateBranchEventSchema,
@@ -26,8 +26,8 @@ router.use(authenticateJWT, requireBranchRep)
 
 router.get('/events', listBranchRepEvents)
 router.post('/events', validateRequest(createBranchEventSchema), createBranchRepEvent)
-router.post('/events/:eventId/organizers', validateRequest(addOrganizerSchema), addOrganizerToEvent)
-router.delete('/events/:eventId/organizers/:userId', removeOrganizerFromEvent)
+router.post('/events/:eventId/organisers', validateRequest(addOrganiserSchema), addOrganiserToEvent)
+router.delete('/events/:eventId/organisers/:userId', removeOrganiserFromEvent)
 router.delete('/events/:eventId', deleteBranchEvent)
 router.get('/events/:eventId', getBranchEventDetails)
 router.put('/events/:eventId', validateRequest(updateBranchEventSchema), updateBranchEvent)

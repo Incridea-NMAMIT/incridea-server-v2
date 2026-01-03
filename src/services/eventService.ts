@@ -88,7 +88,7 @@ export async function getPublishedEventById(id: number) {
         select: { roundNo: true, date: true },
         orderBy: { roundNo: 'asc' },
       },
-      Organizers: {
+      Organisers: {
         select: {
           User: {
             select: {
@@ -109,6 +109,6 @@ export async function getPublishedEventById(id: number) {
   return {
     ...event,
     rounds: event.Rounds,
-    organizers: event.Organizers.map((org) => org.User),
+    organisers: event.Organisers.map((org) => org.User),
   }
 }

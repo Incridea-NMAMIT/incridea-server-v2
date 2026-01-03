@@ -2,7 +2,7 @@ import type { NextFunction, Response } from 'express'
 import prisma from '../prisma/client'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import type {
-  AddOrganizerInput,
+  AddOrganiserInput,
   CreateBranchEventInput,
   PublishBranchEventInput,
   UpdateBranchEventInput,
@@ -70,9 +70,18 @@ export async function listBranchRepEvents(req: AuthenticatedRequest, res: Respon
       select: {
         id: true,
         name: true,
+        description: true,
+        fees: true,
+        venue: true,
+        minTeamSize: true,
+        maxTeamSize: true,
+        maxTeams: true,
         eventType: true,
+        category: true,
+        tier: true,
         published: true,
-        Organizers: {
+        image: true,
+        Organisers: {
           select: {
             userId: true,
             User: { select: { id: true, name: true, email: true, phoneNumber: true } },
@@ -87,9 +96,18 @@ export async function listBranchRepEvents(req: AuthenticatedRequest, res: Respon
       events: events.map((event) => ({
         id: event.id,
         name: event.name,
+        description: event.description,
+        fees: event.fees,
+        venue: event.venue,
+        minTeamSize: event.minTeamSize,
+        maxTeamSize: event.maxTeamSize,
+        maxTeams: event.maxTeams,
         eventType: event.eventType,
+        category: event.category,
+        tier: event.tier,
         published: event.published,
-        organizers: event.Organizers.map((org) => ({
+        image: event.image,
+        organisers: event.Organisers.map((org) => ({
           userId: org.userId,
           name: org.User?.name ?? '',
           email: org.User?.email ?? '',
@@ -141,12 +159,12 @@ export async function createBranchRepEvent(req: AuthenticatedRequest, res: Respo
   }
 }
 
-export async function addOrganizerToEvent(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function addOrganiserToEvent(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const userId = ensureAuthUser(req, res)
     if (!userId) return
 
-    const payload = req.body as AddOrganizerInput
+    const payload = req.body as AddOrganiserInput
     const eventId = Number(req.params.eventId)
     if (!Number.isFinite(eventId)) {
       return res.status(400).json({ message: 'Invalid event id' })
@@ -165,34 +183,34 @@ export async function addOrganizerToEvent(req: AuthenticatedRequest, res: Respon
       return res.status(404).json({ message: 'Event not found for your branch' })
     }
 
-    const organizerUser = await prisma.user.findUnique({ where: { email: payload.email } })
-    if (!organizerUser) {
+    const organiserUser = await prisma.user.findUnique({ where: { email: payload.email } })
+    if (!organiserUser) {
       return res.status(404).json({ message: 'User not found' })
     }
 
-    const alreadyOrganizer = await prisma.organizer.findFirst({
-      where: { eventId: event.id, userId: organizerUser.id },
+    const alreadyOrganiser = await prisma.organiser.findFirst({
+      where: { eventId: event.id, userId: organiserUser.id },
     })
-    if (alreadyOrganizer) {
-      return res.status(400).json({ message: 'User is already an organizer for this event' })
+    if (alreadyOrganiser) {
+      return res.status(400).json({ message: 'User is already an organiser for this event' })
     }
 
-    const organizer = await prisma.organizer.create({
-      data: { eventId: event.id, userId: organizerUser.id },
+    const organiser = await prisma.organiser.create({
+      data: { eventId: event.id, userId: organiserUser.id },
       select: { userId: true, User: { select: { name: true, email: true, phoneNumber: true } } },
     })
 
     void logWebEvent({
-      message: `BranchRep added organizer ${organizerUser.email} to event ${event.id}`,
+      message: `BranchRep added organiser ${organiserUser.email} to event ${event.id}`,
       userId,
     })
 
     return res.status(201).json({
-      organizer: {
-        userId: organizer.userId,
-        name: organizer.User?.name ?? '',
-        email: organizer.User?.email ?? '',
-        phoneNumber: organizer.User?.phoneNumber ?? '',
+      organiser: {
+        userId: organiser.userId,
+        name: organiser.User?.name ?? '',
+        email: organiser.User?.email ?? '',
+        phoneNumber: organiser.User?.phoneNumber ?? '',
       },
     })
   } catch (error) {
@@ -200,7 +218,7 @@ export async function addOrganizerToEvent(req: AuthenticatedRequest, res: Respon
   }
 }
 
-export async function removeOrganizerFromEvent(
+export async function removeOrganiserFromEvent(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
@@ -210,9 +228,9 @@ export async function removeOrganizerFromEvent(
     if (!userId) return
 
     const eventId = Number(req.params.eventId)
-    const organizerUserId = Number(req.params.userId)
-    if (!Number.isFinite(eventId) || !Number.isFinite(organizerUserId)) {
-      return res.status(400).json({ message: 'Invalid event or organizer id' })
+    const organiserUserId = Number(req.params.userId)
+    if (!Number.isFinite(eventId) || !Number.isFinite(organiserUserId)) {
+      return res.status(400).json({ message: 'Invalid event or organiser id' })
     }
 
     const branchRep = await getBranchRepContext(userId)
@@ -228,21 +246,21 @@ export async function removeOrganizerFromEvent(
       return res.status(404).json({ message: 'Event not found for your branch' })
     }
 
-    const organizer = await prisma.organizer.findUnique({
-      where: { userId_eventId: { eventId: event.id, userId: organizerUserId } },
+    const organiser = await prisma.organiser.findUnique({
+      where: { userId_eventId: { eventId: event.id, userId: organiserUserId } },
     })
-    if (!organizer) {
-      return res.status(404).json({ message: 'Organizer not found for this event' })
+    if (!organiser) {
+      return res.status(404).json({ message: 'Organiser not found for this event' })
     }
 
-    await prisma.organizer.delete({ where: { id: organizer.id } })
+    await prisma.organiser.delete({ where: { id: organiser.id } })
 
     void logWebEvent({
-      message: `BranchRep removed organizer ${organizerUserId} from event ${event.id}`,
+      message: `BranchRep removed organiser ${organiserUserId} from event ${event.id}`,
       userId,
     })
 
-    return res.status(200).json({ message: 'Organizer removed' })
+    return res.status(200).json({ message: 'Organiser removed' })
   } catch (error) {
     return next(error)
   }
@@ -320,7 +338,7 @@ export async function getBranchEventDetails(req: AuthenticatedRequest, res: Resp
         category: true,
         tier: true,
         published: true,
-        Organizers: {
+        Organisers: {
           select: {
             userId: true,
             User: { select: { id: true, name: true, email: true, phoneNumber: true } },
@@ -336,7 +354,7 @@ export async function getBranchEventDetails(req: AuthenticatedRequest, res: Resp
     return res.status(200).json({
       event: {
         ...event,
-        organizers: event.Organizers.map((org) => ({
+        organisers: event.Organisers.map((org) => ({
           userId: org.userId,
           name: org.User?.name ?? '',
           email: org.User?.email ?? '',

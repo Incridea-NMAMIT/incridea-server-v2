@@ -62,7 +62,7 @@ model User {
 
   XP                XP[]
   Judges            Judge[]
-  Organizers        Organizer[]
+  Organisers        Organiser[]
   TeamMembers       TeamMember[]
   PaymentOrders     PaymentOrder[]
   RefreshTokens     RefreshToken[]
@@ -193,15 +193,16 @@ model Event {
   eventType   EventType     @default(INDIVIDUAL)
   category    EventCategory @default(TECHNICAL)
   tier        EventTier     @default(GOLD)
+  isBranch    Boolean       @default(true)
 
-  branchId Int
-  Branch   Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  branchId Int?
+  Branch   Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
   Teams            Team[]
   Level            Level[]
   Rounds           Round[]
   Winner           Winners[]
-  Organizers       Organizer[]
+  Organisers       Organiser[]
   CertificateIssue CertificateIssue[]
 
   createdAt DateTime @default(now())
@@ -311,7 +312,7 @@ model BranchRep {
   @@index([branchId, userId])
 }
 
-model Organizer {
+model Organiser {
   id Int @id @default(autoincrement())
 
   userId Int
@@ -319,6 +320,9 @@ model Organizer {
 
   eventId Int
   Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  name        String?
+  phoneNumber String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -541,6 +545,8 @@ model QuizScore {
   quizId String
   Quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
+  attemptStartTime DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -694,10 +700,9 @@ enum PaymentType {
 
 enum Role {
   USER
-  PARTICIPANT
   ADMIN
-  JUDGE
   JURY
+  DOCUMENTATION
 }
 
 enum Status {

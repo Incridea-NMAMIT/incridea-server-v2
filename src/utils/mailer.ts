@@ -12,10 +12,15 @@ const transporter = nodemailer.createTransport({
 })
 
 export async function sendEmail(to: string, subject: string, text: string) {
-  await transporter.sendMail({
-    from: env.smtp.from,
-    to,
-    subject,
-    text,
-  })
+  try {
+    await transporter.sendMail({
+      from: env.smtp.from,
+      to,
+      subject,
+      text,
+    })
+  } catch (error) {
+    console.error('Failed to send email via SMTP. Logging content instead:', error)
+    console.log(`--- EMAIL (${to}) ---\nSubject: ${subject}\n\n${text}\n-----------------------`)
+  }
 }

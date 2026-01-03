@@ -190,14 +190,16 @@ export async function createUserWithProfile(payload: SignupInput) {
       Alumni: true,
       UserRoles: true,
       BranchRep: true,
-      Organizers: true,
+      Organisers: true,
+      Judges: true,
     },
   }) as Promise<
     typeof user & {
       Alumni: { yearOfGraduation: number; idDocument: string } | null
       UserRoles: { role: Role }[]
       BranchRep: { id: number } | null
-      Organizers: { id: number }[]
+      Organisers: { id: number }[]
+      Judges: { id: number }[]
     }
   >
 }
@@ -220,7 +222,10 @@ export async function verifyOtpForUser(email: string, otp: string) {
       BranchRep: {
         select: { id: true },
       },
-      Organizers: {
+      Organisers: {
+        select: { id: true },
+      },
+      Judges: {
         select: { id: true },
       },
       collegeId: true,
@@ -261,7 +266,7 @@ export async function verifyOtpForUser(email: string, otp: string) {
       otpHash: null,
       otpExpiresAt: null,
     },
-    include: { Alumni: true, UserRoles: true, BranchRep: true, Organizers: true },
+    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true },
   })
 
   return updated
@@ -290,6 +295,22 @@ export async function authenticateUser(email: string, password: string) {
           idDocument: true,
         },
       },
+      createdAt: true,
+      BranchRep: {
+        select: {
+          id: true,
+        },
+      },
+      Organisers: {
+        select: {
+          id: true,
+        },
+      },
+      Judges: {
+        select: {
+          id: true,
+        },
+      },
     },
   })
   if (!user) {
@@ -307,7 +328,7 @@ export async function authenticateUser(email: string, password: string) {
 export async function getUserById(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { Alumni: true, UserRoles: true, BranchRep: true, Organizers: true },
+    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true },
   })
   if (!user) {
     throw new AppError('User not found', 404)

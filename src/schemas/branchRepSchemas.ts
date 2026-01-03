@@ -25,11 +25,11 @@ export const createBranchEventSchema = z
 
 export type CreateBranchEventInput = z.infer<typeof createBranchEventSchema>
 
-export const addOrganizerSchema = z.object({
-  email: z.string().trim().email('A valid organizer email is required'),
+export const addOrganiserSchema = z.object({
+  email: z.string().trim().email('A valid organiser email is required'),
 })
 
-export type AddOrganizerInput = z.infer<typeof addOrganizerSchema>
+export type AddOrganiserInput = z.infer<typeof addOrganiserSchema>
 
 export const updateBranchEventSchema = z
   .object({
