@@ -1,6 +1,7 @@
 import type { NextFunction, Response } from 'express'
 import prisma from '../prisma/client'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
+import { getIO } from '../socket'
 
 export function ensureAuthUser(req: AuthenticatedRequest, res: Response) {
   if (!req.user?.id) {
@@ -150,9 +151,15 @@ export async function submitScore(req: AuthenticatedRequest, res: Response, next
         })
         if (!isJudge) return res.status(403).json({ message: 'Not a judge' })
 
+        // Check validation for Score Out of
+        const criteria = await prisma.criteria.findUnique({ where: { id: criteriaId } })
+        if (criteria && Number(scoreVal) > criteria.scoreOutOf) {
+             return res.status(400).json({ message: `Score cannot be greater than ${criteria.scoreOutOf}` })
+        }
+
         // Check if round is completed?
         const round = await prisma.round.findUnique({ where: { eventId_roundNo: { eventId, roundNo } } })
-        if (round?.completed) return res.status(400).json({ message: 'Round is completed' })
+        if (round?.isCompleted) return res.status(400).json({ message: 'Round is completed' })
 
         await prisma.scores.upsert({
             where: {
@@ -172,6 +179,14 @@ export async function submitScore(req: AuthenticatedRequest, res: Response, next
                 score: scoreVal
             }
         })
+
+        // Emit score update
+        try {
+            getIO().emit('score-update', { eventId, roundNo })
+        } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error("Socket emit failed", e)
+        }
 
         return res.status(200).json({ message: 'Score saved' })
 
@@ -273,9 +288,141 @@ export async function updateRoundStatus(req: AuthenticatedRequest, res: Response
 
          await prisma.round.update({
              where: { eventId_roundNo: { eventId, roundNo } },
-             data: { selectStatus }
+             data: { isCompleted: selectStatus }
          })
          return res.status(200).json({ message: 'Round status updated' })
+    } catch (error) {
+        return next(error)
+    }
+}
+
+export async function getWinnersByEvent(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const userId = ensureAuthUser(req, res)
+        if (!userId) return
+
+        const eventId = Number(req.params.eventId)
+        if (!Number.isFinite(eventId)) return res.status(400).json({ message: 'Invalid event id' })
+
+         // Auth check: Admin or Jury for this event
+         const isJudge = await prisma.judge.findFirst({ where: { userId, eventId } })
+         // Check if user is Admin to bypass judge check
+         if (!isJudge) {
+             const userRole = await prisma.userRole.findFirst({
+                 where: { userId, role: 'ADMIN' }
+             })
+             if (!userRole) return res.status(403).json({ message: 'Not authorized' })
+         }
+
+        const winners = await prisma.winners.findMany({
+            where: { eventId },
+            include: {
+                Team: {
+                    select: {
+                        id: true,
+                        name: true
+                    }
+                }
+            }
+        })
+        return res.status(200).json({ winners })
+    } catch (error) {
+        return next(error)
+    }
+}
+
+export async function getAllWinners(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const userId = ensureAuthUser(req, res)
+        if (!userId) return
+        
+        // This is for CSV export. Should be accessible to Jury/Admin.
+        // If user is Jury, maybe restrict to events they judge? 
+        // V1 implementation seemed to fetch ALL winners for client-side filtering.
+        // We will fetch all and let client filter or filter by role?
+        // Let's allow fetching all if they have Jury or Admin role.
+        
+        const winners = await prisma.winners.findMany({
+            include: {
+                Event: {
+                    select: {
+                        id: true,
+                        name: true,
+                        eventType: true,
+                        category: true,
+                        Branch: { select: { name: true } },
+                        Rounds: {
+                             orderBy: { roundNo: 'desc' },
+                             take: 1,
+                             select: { date: true }
+                        }
+                    }
+                },
+                Team: {
+                    include: {
+                        TeamMembers: {
+                            include: {
+                                User: {
+                                    select: {
+                                        name: true,
+                                        email: true,
+                                        phoneNumber: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+        return res.status(200).json({ winners })
+    } catch (error) {
+        return next(error)
+    }
+}
+
+export async function getScoreSheet(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const userId = ensureAuthUser(req, res)
+        if (!userId) return
+
+        const eventId = Number(req.params.eventId)
+        const roundNo = Number(req.params.roundNo)
+
+        if (!Number.isFinite(eventId) || !Number.isFinite(roundNo)) return res.status(400).json({ message: 'Invalid identifiers' })
+
+        // Auth check
+        const isJudge = await prisma.judge.findFirst({ where: { userId, eventId } })
+        if (!isJudge) {
+             const userRole = await prisma.userRole.findFirst({
+                 where: { userId, role: 'ADMIN' }
+             })
+             if (!userRole) return res.status(403).json({ message: 'Not authorized' })
+        }
+
+        // Fetch teams with ALL scores
+        const teams = await prisma.team.findMany({
+            where: {
+                eventId,
+                roundNo,
+                confirmed: true
+            },
+            include: {
+                Score: {
+                    include: {
+                        Judge: {
+                             select: {
+                                name: true,
+                                id: true
+                             }
+                        },
+                        Criteria: true
+                    }
+                }
+            }
+        })
+        
+        return res.status(200).json({ teams })
     } catch (error) {
         return next(error)
     }

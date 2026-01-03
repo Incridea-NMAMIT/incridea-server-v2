@@ -62,6 +62,8 @@ model User {
 
   XP                XP[]
   Judges            Judge[]
+  ScoresGiven       Scores[]
+  CommentsGiven     Comments[]
   Organisers        Organiser[]
   TeamMembers       TeamMember[]
   PaymentOrders     PaymentOrder[]
@@ -194,9 +196,9 @@ model Event {
   category    EventCategory @default(TECHNICAL)
   tier        EventTier     @default(GOLD)
   isBranch    Boolean       @default(true)
-
-  branchId Int?
-  Branch   Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  isStarted   Boolean       @default(false)
+  branchId    Int?
+  Branch      Branch?       @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
   Teams            Team[]
   Level            Level[]
@@ -239,11 +241,9 @@ model Team {
 }
 
 model Round {
-  roundNo          Int       @default(1)
-  completed        Boolean   @default(false)
-  notificationSent Boolean   @default(false)
-  selectStatus     Boolean   @default(false)
-  date             DateTime?
+  roundNo     Int       @default(1)
+  isCompleted Boolean   @default(false)
+  date        DateTime?
 
   eventId Int
   Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -361,15 +361,12 @@ model TeamMember {
 model Judge {
   id Int @id @default(autoincrement())
 
-  userId Int  @unique
+  userId Int
   User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   eventId Int
   roundNo Int
   Round   Round @relation(fields: [eventId, roundNo], references: [eventId, roundNo], onDelete: Cascade)
-
-  Scores   Scores[]
-  Comments Comments[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -379,9 +376,9 @@ model Judge {
 }
 
 model Criteria {
-  id   Int          @id @default(autoincrement())
-  name String
-  type CriteriaType @default(NUMBER)
+  id         Int    @id @default(autoincrement())
+  name       String
+  scoreOutOf Int    @default(10)
 
   eventId Int
   roundNo Int
@@ -407,7 +404,7 @@ model Scores {
   Criteria   Criteria @relation(fields: [criteriaId], references: [id], onDelete: Cascade)
 
   judgeId Int
-  Judge   Judge @relation(fields: [judgeId], references: [userId])
+  Judge   User @relation(fields: [judgeId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -431,7 +428,7 @@ model Comments {
   Round   Round @relation(fields: [eventId, roundNo], references: [eventId, roundNo], onDelete: Cascade)
 
   judgeId Int
-  Judge   Judge @relation(fields: [judgeId], references: [userId])
+  Judge   User @relation(fields: [judgeId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -445,8 +442,7 @@ model Comments {
 model Winners {
   id Int @id @default(autoincrement())
 
-  notificationSent Boolean    @default(false)
-  type             WinnerType
+  type WinnerType
 
   teamId Int  @unique
   Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -768,12 +764,6 @@ enum CollegeType {
   ENGINEERING
   NON_ENGINEERING
   OTHER
-}
-
-enum CriteriaType {
-  TEXT
-  NUMBER
-  TIME
 }
 
 enum WinnerType {

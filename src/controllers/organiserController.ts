@@ -607,7 +607,7 @@ export async function addCriteria(req: AuthenticatedRequest, res: Response, next
 
         const eventId = Number(req.params.eventId)
         const roundNo = Number(req.params.roundNo)
-        const { name, type } = req.body
+        const { name, scoreOutOf } = req.body
 
         const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
         if (!isOrganiser) {
@@ -621,7 +621,7 @@ export async function addCriteria(req: AuthenticatedRequest, res: Response, next
                 eventId,
                 roundNo,
                 name,
-                type: type || 'NUMBER'
+                scoreOutOf: Number(scoreOutOf) || 10
             }
         })
 

@@ -195,6 +195,13 @@ export async function addOrganiserToEvent(req: AuthenticatedRequest, res: Respon
       return res.status(400).json({ message: 'User is already an organiser for this event' })
     }
 
+    const currentOrganisersCount = await prisma.organiser.count({
+      where: { eventId: event.id },
+    })
+    if (currentOrganisersCount >= 2) {
+      return res.status(400).json({ message: 'Event cannot have more than 2 organisers' })
+    }
+
     const organiser = await prisma.organiser.create({
       data: { eventId: event.id, userId: organiserUser.id },
       select: { userId: true, User: { select: { name: true, email: true, phoneNumber: true } } },
