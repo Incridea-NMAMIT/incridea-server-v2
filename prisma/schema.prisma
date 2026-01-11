@@ -43,7 +43,6 @@ model User {
   isVerified   Boolean   @default(false)
   password     String    @db.Text
   phoneNumber  String
-  totalXp      Int       @default(0)
   category     Category  @default(INTERNAL)
   otpHash      String?   @db.Text
   otpExpiresAt DateTime?
@@ -60,7 +59,6 @@ model User {
   HeadOfCommittee     Committee[]          @relation("CommitteeHeadUser")
   CoHeadOfCommittee   Committee[]          @relation("CommitteeCoHeadUser")
 
-  XP                XP[]
   Judges            Judge[]
   ScoresGiven       Scores[]
   CommentsGiven     Comments[]
@@ -200,8 +198,8 @@ model Event {
   branchId    Int?
   Branch      Branch?       @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
-  Teams            Team[]
-  Level            Level[]
+  Teams Team[]
+
   Rounds           Round[]
   Winner           Winners[]
   Organisers       Organiser[]
@@ -248,7 +246,7 @@ model Round {
   eventId Int
   Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  quizId String? // TODO(Omkar): whats this for?
+  quizId String?
   Quiz   Quiz?
 
   Judges   Judge[]
@@ -450,8 +448,6 @@ model Winners {
   eventId Int
   Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  Level Level[]
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -596,43 +592,6 @@ model Question {
   updatedAt DateTime @updatedAt
 
   @@index([quizId])
-}
-
-model Level {
-  id Int @id @default(autoincrement())
-
-  point Int @default(0)
-
-  EventId Int?
-  Event   Event? @relation(fields: [EventId], references: [id], onDelete: Cascade)
-
-  winnerId Int?
-  Winner   Winners? @relation(fields: [winnerId], references: [id], onDelete: SetNull)
-
-  XP XP[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([EventId])
-  @@index([winnerId])
-}
-
-model XP {
-  id Int @id @default(autoincrement())
-
-  userId Int
-  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  levelId Int
-  Level   Level @relation(fields: [levelId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([userId, levelId])
-  @@index([userId])
-  @@index([levelId])
 }
 
 model Hotel {

@@ -1,13 +1,14 @@
 import { Router } from 'express'
 import {
-	login,
 	signup,
 	verifyOtp,
+  resendOtp,
 	me,
 	changePasswordHandler,
 	requestPasswordResetHandler,
   resetPasswordHandler,
   verifyMasterKey,
+  logout,
 } from '../controllers/authController'
 import { validateRequest } from '../middlewares/validateRequest'
 import {
@@ -30,10 +31,12 @@ const verifyMasterKeySchema = z.object({
 router.post('/signup', validateRequest(signupSchema), signup)
 router.post('/login', validateRequest(loginSchema), login)
 router.post('/verify-otp', validateRequest(verifyOtpSchema), verifyOtp)
+router.post('/resend-otp', validateRequest(z.object({ email: z.string().email() })), resendOtp)
 router.get('/me', authenticateJWT, me)
 router.post('/change-password', authenticateJWT, validateRequest(changePasswordSchema), changePasswordHandler)
 router.post('/request-password-reset', validateRequest(resetPasswordRequestSchema), requestPasswordResetHandler)
 router.post('/reset-password', validateRequest(resetPasswordConfirmSchema), resetPasswordHandler)
 router.post('/verify-master', validateRequest(verifyMasterKeySchema), verifyMasterKey)
+router.post('/logout', logout)
 
 export default router

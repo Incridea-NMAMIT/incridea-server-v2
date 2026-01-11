@@ -182,7 +182,7 @@ export async function submitScore(req: AuthenticatedRequest, res: Response, next
 
         // Emit score update
         try {
-            getIO().emit('score-update', { eventId, roundNo })
+            getIO().to(`event-${eventId}`).emit('score-update', { eventId, roundNo })
         } catch (e) {
             // eslint-disable-next-line no-console
             console.error("Socket emit failed", e)
@@ -246,6 +246,11 @@ export async function selectWinner(req: AuthenticatedRequest, res: Response, nex
                 type
             }
         })
+        try {
+            getIO().to(`event-${eventId}`).emit('winner-update', { eventId })
+        } catch (e) {
+            console.error('Socket notification failed', e)
+        }
         return res.status(201).json({ message: 'Winner selected' })
      } catch (error) {
          return next(error)
@@ -268,6 +273,12 @@ export async function deleteWinner(req: AuthenticatedRequest, res: Response, nex
 
          await prisma.winners.delete({ where: { id: winnerId } })
          
+        try {
+            getIO().to(`event-${winner.eventId}`).emit('winner-update', { eventId: winner.eventId })
+        } catch (e) {
+            console.error('Socket notification failed', e)
+        }
+
          return res.status(200).json({ message: 'Winner removed' })
     } catch (error) {
         return next(error)
@@ -290,6 +301,14 @@ export async function updateRoundStatus(req: AuthenticatedRequest, res: Response
              where: { eventId_roundNo: { eventId, roundNo } },
              data: { isCompleted: selectStatus }
          })
+         
+        try {
+            getIO().to('events-list').emit('event-update', { eventId })
+            getIO().to(`event-${eventId}`).emit('event-update', { eventId })
+        } catch (e) {
+            console.error('Socket notification failed', e)
+        }
+
          return res.status(200).json({ message: 'Round status updated' })
     } catch (error) {
         return next(error)
@@ -409,6 +428,12 @@ export async function getScoreSheet(req: AuthenticatedRequest, res: Response, ne
             },
             include: {
                 Score: {
+                    where: {
+                         Criteria: {
+                             roundNo,
+                             eventId
+                         }
+                    },
                     include: {
                         Judge: {
                              select: {

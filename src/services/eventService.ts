@@ -33,8 +33,9 @@ export async function listPublishedEvents() {
       maxTeams: true,
       eventType: true,
       category: true,
+      isStarted: true,
       Rounds: {
-        select: { roundNo: true, date: true },
+        select: { roundNo: true, date: true, isCompleted: true },
         orderBy: { roundNo: 'asc' },
       },
     },
@@ -84,8 +85,9 @@ export async function getPublishedEventById(id: number) {
       maxTeams: true,
       eventType: true,
       category: true,
+      isStarted: true,
       Rounds: {
-        select: { roundNo: true, date: true },
+        select: { roundNo: true, date: true, isCompleted: true },
         orderBy: { roundNo: 'asc' },
       },
       Organisers: {
@@ -99,6 +101,9 @@ export async function getPublishedEventById(id: number) {
           },
         },
       },
+      _count: {
+        select: { Rounds: true }
+      }
     },
   })
 
@@ -109,6 +114,7 @@ export async function getPublishedEventById(id: number) {
   return {
     ...event,
     rounds: event.Rounds,
+    roundsCount: event._count.Rounds,
     organisers: event.Organisers.map((org) => org.User),
   }
 }

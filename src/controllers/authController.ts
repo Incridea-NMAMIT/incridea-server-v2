@@ -4,6 +4,7 @@ import {
   createUserWithProfile,
   generateToken,
   verifyOtpForUser,
+  resendOtpForUser,
   getUserById,
   changePassword,
   requestPasswordReset,
@@ -29,6 +30,7 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
       message: `Signup success for ${user.email}`,
       userId: user.id,
     })
+
     return res.status(201).json({
       message: 'User saved. Please verify your email with the OTP sent.',
       user: {
@@ -60,9 +62,8 @@ export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body as LoginInput
     const user = await authenticateUser(email, password)
-    if (!user.isVerified) {
-      return res.status(403).json({ message: 'Please verify your email to continue.' })
-    }
+    // Removed verification check to allow unverified login (frontend handles redirect)
+    
     const token = generateToken(user.id)
 
     const committee = await getUserCommitteeSnapshot(user.id)
@@ -70,6 +71,15 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     void logWebEvent({
       message: `Login success for ${user.email}`,
       userId: user.id,
+    })
+
+    res.cookie('token', token, {
+       httpOnly: false,
+       secure: process.env.NODE_ENV === 'production',
+       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+       domain: process.env.COOKIE_DOMAIN,
+       path: '/',
+       maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
     })
 
     return res.status(200).json({
@@ -112,6 +122,15 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
       userId: user.id,
     })
 
+    res.cookie('token', token, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        domain: process.env.COOKIE_DOMAIN,
+        path: '/',
+        maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
+    })
+
     return res.status(200).json({
       message: 'Email verified successfully',
       token,
@@ -135,6 +154,19 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
         createdAt: user.createdAt,
       },
     })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function resendOtp(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email } = req.body
+    await resendOtpForUser(email)
+    void logWebEvent({
+      message: `OTP resent for ${email}`,
+    })
+    return res.status(200).json({ message: 'OTP resent successfully' })
   } catch (error) {
     return next(error)
   }
@@ -229,6 +261,21 @@ export async function verifyMasterKey(req: Request, res: Response, next: NextFun
     } else {
       return res.status(401).json({ success: false, message: 'Invalid master key' })
     }
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function logout(_req: Request, res: Response, next: NextFunction) {
+  try {
+    res.clearCookie('token', {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      domain: process.env.COOKIE_DOMAIN,
+      path: '/'
+    })
+    return res.status(200).json({ message: 'Logged out successfully' })
   } catch (error) {
     return next(error)
   }

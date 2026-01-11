@@ -106,8 +106,9 @@ async function resolveSelection(payload: SignupInput) {
 }
 
 export async function createUserWithProfile(payload: SignupInput) {
-  const existing = await prisma.user.findUnique({ where: { email: payload.email } })
-  if (existing?.isVerified) {
+  const email = payload.email.toLowerCase()
+  const existing = await prisma.user.findUnique({ where: { email } })
+  if (existing) {
     throw new AppError('Email already in use', 409)
   }
 
@@ -118,7 +119,7 @@ export async function createUserWithProfile(payload: SignupInput) {
 
   const data = {
     name: payload.name,
-    email: payload.email,
+    email,
     password: passwordHash,
     phoneNumber: payload.phoneNumber,
     category,
@@ -272,7 +273,37 @@ export async function verifyOtpForUser(email: string, otp: string) {
   return updated
 }
 
+export async function resendOtpForUser(email: string) {
+  const user = await prisma.user.findUnique({ where: { email } })
+  if (!user) {
+    throw new AppError('User not found', 404)
+  }
+  if (user.isVerified) {
+    throw new AppError('User already verified', 400)
+  }
+
+  const { otpCode, otpExpiresAt } = generateOtpBundle()
+  const otpHash = await hashPassword(otpCode)
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      otpHash,
+      otpExpiresAt,
+    },
+  })
+
+  await sendEmail(
+    user.email,
+    'Verify your email',
+    `Your verification code is ${otpCode}. It expires in 10 minutes.`,
+  )
+
+  return { message: 'OTP resent successfully' }
+}
+
 export async function authenticateUser(email: string, password: string) {
+  email = email.toLowerCase()
   const user = await prisma.user.findUnique({
     where: { email },
     select: {

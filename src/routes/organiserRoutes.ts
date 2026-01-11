@@ -19,7 +19,9 @@ import {
   updateQuiz,
   deleteQuiz,
   getQuizLeaderboard,
-  promoteParticipants
+  promoteParticipants,
+  toggleEventStart,
+  setActiveRound
 } from '../controllers/organiserController'
 import { authenticateJWT } from '../middlewares/authMiddleware'
 import { requireOrganiser } from '../middlewares/requireOrganiser'
@@ -36,6 +38,7 @@ router.put('/profile', validateRequest(updateOrganiserProfileSchema), updateOrga
 router.get('/events', listOrganiserEvents)
 router.get('/events/:eventId', getOrganiserEventDetails)
 router.post('/events/:eventId/teams', validateRequest(createTeamSchema), createTeam)
+router.patch('/events/:eventId/toggle-start', toggleEventStart)
 router.delete('/teams/:teamId', deleteTeam)
 router.post('/teams/:teamId/members', validateRequest(addTeamMemberSchema), addTeamMember)
 router.delete('/teams/:teamId/members/:userId', removeTeamMember)
@@ -61,5 +64,6 @@ router.patch('/events/:eventId/quiz/:quizId', validateRequest(updateQuizSchema),
 router.delete('/events/:eventId/quiz/:quizId', deleteQuiz)
 router.get('/events/:eventId/rounds/:roundId/quiz/leaderboard', getQuizLeaderboard)
 router.post('/events/:eventId/rounds/:roundId/quiz/promote', promoteParticipants)
+router.post('/events/:eventId/set-active-round', setActiveRound)
 
 export default router

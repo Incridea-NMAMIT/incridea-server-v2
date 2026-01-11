@@ -1001,3 +1001,91 @@ export async function promoteParticipants(req: AuthenticatedRequest, res: Respon
         return next(error)
     }
 }
+
+export async function toggleEventStart(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const userId = ensureAuthUser(req, res)
+        if (!userId) return
+
+        const eventId = Number(req.params.eventId)
+        if (!Number.isFinite(eventId)) return res.status(400).json({ message: 'Invalid event id' })
+
+        const { isStarted } = req.body
+
+        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+        if (!isOrganiser) {
+             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+             const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+        }
+
+        const event = await prisma.event.update({
+            where: { id: eventId },
+            data: { isStarted: Boolean(isStarted) }
+        })
+
+        if (isStarted) {
+             // Reset all rounds to not completed
+             await prisma.round.updateMany({
+                 where: { eventId },
+                 data: { isCompleted: false }
+             })
+        }
+
+        void logWebEvent({
+            message: `Organiser ${isStarted ? 'started' : 'stopped'} event ${eventId}`,
+            userId
+        })
+
+        return res.status(200).json({ event })
+    } catch (error) {
+        return next(error)
+    }
+}
+
+export async function setActiveRound(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const userId = ensureAuthUser(req, res)
+        if (!userId) return
+
+        const eventId = Number(req.params.eventId)
+        const roundNo = Number(req.body.roundNo) 
+
+        if (!Number.isFinite(eventId) || !Number.isFinite(roundNo)) return res.status(400).json({ message: 'Invalid identifiers' })
+
+        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+        if (!isOrganiser) {
+             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+             const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+        }
+
+        // Mark previous completed
+        await prisma.round.updateMany({
+            where: { 
+                eventId,
+                roundNo: { lt: roundNo }
+            },
+            data: { isCompleted: true }
+        })
+
+        // Mark current and future incomplete
+        await prisma.round.updateMany({
+            where: { 
+                eventId,
+                roundNo: { gte: roundNo }
+            },
+            data: { isCompleted: false }
+        })
+
+        void logWebEvent({
+            message: `Organiser set active round to ${roundNo} for event ${eventId}`,
+            userId
+        })
+
+        return res.status(200).json({ message: 'Active round updated' })
+
+    } catch (error) {
+        return next(error)
+    }
+}
