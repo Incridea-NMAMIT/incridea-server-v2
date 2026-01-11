@@ -25,6 +25,14 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
+    'https://incridea.in',
+    'https://api.incridea.in',
+    'https://dashboard.incridea.in',
+    'https://www.incridea.in',
+    'https://auth.incridea.in',
+    'https://culural.incridea.in',
+    'https://mc.incridea.in',
+
     process.env.FRONTEND_URL || ''
   ].filter(Boolean),
   credentials: true,
