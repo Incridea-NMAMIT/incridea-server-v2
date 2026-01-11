@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import {
 	signup,
+  login,
 	verifyOtp,
   resendOtp,
 	me,

@@ -129,9 +129,7 @@ export async function createUserWithProfile(payload: SignupInput) {
     otpExpiresAt,
   }
 
-  const user = existing
-    ? await prisma.user.update({ where: { id: existing.id }, data })
-    : await prisma.user.create({
+  const user = await prisma.user.create({
         data: {
           ...data,
           UserRoles: { create: [{ role: Role.USER }] },
