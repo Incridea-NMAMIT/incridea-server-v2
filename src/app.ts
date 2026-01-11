@@ -16,6 +16,8 @@ import { auditLogger } from './middlewares/auditLogger'
 
 import organiserRoutes from './routes/organiserRoutes'
 
+import paymentRoutes from './routes/paymentRoutes'
+
 const app = express()
 
 app.use(helmet())
@@ -37,7 +39,11 @@ app.use(cors({
   ].filter(Boolean),
   credentials: true,
 }))
-app.use(express.json())
+app.use(express.json({
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf
+  }
+}))
 app.use(cookieParser())
 app.use(auditLogger)
 
@@ -62,6 +68,7 @@ app.use('/api/documentation', documentationRoutes)
 app.use('/api/registration', registrationRoutes)
 app.use('/api/quiz', quizRoutes)
 app.use('/api/judge', judgingRoutes)
+app.use('/api/payment', paymentRoutes)
 app.use('/api/uploadthing', uploadthingHandler)
 
 app.use((_req, res) => {

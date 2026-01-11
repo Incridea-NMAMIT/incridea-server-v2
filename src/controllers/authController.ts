@@ -11,6 +11,9 @@ import {
   resetPasswordWithToken,
   getUserCommitteeSnapshot,
 } from '../services/authService'
+import { razorpay } from '../services/razorpay'
+import { PaymentType, Status } from '@prisma/client'
+import prisma from '../prisma/client'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import type {
   ChangePasswordInput,
@@ -31,8 +34,42 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
       userId: user.id,
     })
 
+    // Create Razorpay Order
+    let paymentOrderDetails = null
+    try {
+        const paymentOrder = await razorpay.orders.create({
+            amount: 250 * 100, // 250 INR in paise
+            currency: 'INR',
+            receipt: `receipt_${user.id}`,
+            notes: { userId: user.id },
+        })
+
+        await prisma.paymentOrder.create({
+            data: {
+                orderId: paymentOrder.id,
+                amount: 250,
+                status: Status.PENDING,
+                type: PaymentType.FEST_REGISTRATION,
+                userId: user.id,
+            }
+        })
+        
+        paymentOrderDetails = {
+            id: paymentOrder.id,
+            amount: paymentOrder.amount,
+            currency: paymentOrder.currency,
+            keyId: process.env.RAZORPAY_KEY_ID
+        }
+    } catch (err) {
+        console.error("Razorpay order creation failed", err)
+        // Proceed without payment order or handle error? 
+        // For now, let's log and proceed, but user might need to retry payment later.
+        // Ideally should revert user creation or return error, but user creation is successful.
+    }
+
     return res.status(201).json({
       message: 'User saved. Please verify your email with the OTP sent.',
+      paymentOrder: paymentOrderDetails,
       user: {
         id: user.id,
         name: user.name,
