@@ -3,6 +3,10 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../middlewares/authMiddleware';
 import prisma from '../prisma/client';
 import { CommitteeName } from '@prisma/client';
+import { stampPdf } from '../utils/pdfStamper';
+import { UTApi } from 'uploadthing/server';
+
+const utapi = new UTApi();
 
 const CommitteeCodeMap: Record<CommitteeName, string> = {
   MEDIA: 'MED',
@@ -28,10 +32,12 @@ const CommitteeCodeMap: Record<CommitteeName, string> = {
 
 export const createDocument = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { title, description, committee, fileUrl } = req.body;
+        const { title, description, committee, requestedBy } = req.body;
+        const file = req.file;
         const userId = req.user?.id;
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+        if (!file) return res.status(400).json({ message: 'No file uploaded' });
 
         // Check if user is Document Committee Member/Head
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
@@ -67,22 +73,39 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
 
         const documentCode = `${committeeCode}${bbb}${dateStr}${cc}`;
 
+        // Stamp the PDF
+        const { buffer: stampedBuffer, pageCount } = await stampPdf(file.buffer, documentCode);
+
+        // Upload to UploadThing
+        const uploadResponse = await utapi.uploadFiles([
+            new File([stampedBuffer as any], file.originalname, { type: 'application/pdf' })
+        ]);
+
+        if (uploadResponse[0].error) {
+            console.error(uploadResponse[0].error);
+             return res.status(500).json({ message: 'Failed to upload stamped file' });
+        }
+
+        const uploadedUrl = uploadResponse[0].data.url;
+
         const result = await prisma.$transaction(async (tx) => {
             const docDetails = await tx.documentDetails.create({
                 data: {
                     title,
                     description,
                     committeeId: targetCommittee.id,
+                    requestedBy,
                 }
             });
 
             const doc = await tx.document.create({
                 data: {
                     documentCode,
-                    fileUrl,
+                    fileUrl: uploadedUrl,
                     docDetailsId: docDetails.id,
                     generatedById: userId,
                     version: 1,
+                    pageCount,
                 }
             });
             return { docDetails, doc };
@@ -97,9 +120,11 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
 
 export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { docDetailsId, fileUrl } = req.body;
+        const { docDetailsId } = req.body;
+        const file = req.file;
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+        if (!file) return res.status(400).json({ message: 'No file uploaded' });
 
         // Auth Check
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
@@ -140,13 +165,29 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
 
         const documentCode = `${committeeCode}${bbb}${dateStr}${cc}`;
 
+        // Stamp the PDF
+        const { buffer: stampedBuffer, pageCount } = await stampPdf(file.buffer, documentCode);
+
+        // Upload to UploadThing
+        const uploadResponse = await utapi.uploadFiles([
+            new File([stampedBuffer as any], file.originalname, { type: 'application/pdf' })
+        ]);
+
+        if (uploadResponse[0].error) {
+             console.error(uploadResponse[0].error);
+             return res.status(500).json({ message: 'Failed to upload stamped file' });
+        }
+
+        const uploadedUrl = uploadResponse[0].data.url;
+
         const newDoc = await prisma.document.create({
             data: {
                 documentCode,
-                fileUrl,
+                fileUrl: uploadedUrl,
                 docDetailsId: docDetails.id,
                 generatedById: userId,
                 version: newVersion,
+                pageCount,
             }
         });
 
@@ -190,7 +231,6 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
             include: {
                 Documents: {
                     orderBy: { version: 'desc' },
-                    take: 1
                 },
                 committee: true
             },
@@ -227,7 +267,6 @@ export const getAllDocuments = async (req: AuthenticatedRequest, res: Response) 
             include: {
                 Documents: {
                     orderBy: { version: 'desc' },
-                    take: 1
                 },
                 committee: true
             },

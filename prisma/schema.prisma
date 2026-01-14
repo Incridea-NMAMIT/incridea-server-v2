@@ -153,17 +153,16 @@ model Branch {
 model Committee {
   id           Int           @id @default(autoincrement())
   name         CommitteeName @unique
-  headUserId   Int?          @unique
-  coHeadUserId Int?          @unique
+  headUserId   Int?
+  coHeadUserId Int?
 
   headUser   User? @relation("CommitteeHeadUser", fields: [headUserId], references: [id], onDelete: SetNull)
   coHeadUser User? @relation("CommitteeCoHeadUser", fields: [coHeadUserId], references: [id], onDelete: SetNull)
 
-  Members CommitteeMembership[]
+  Members         CommitteeMembership[]
   documentDetails DocumentDetails[]
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 }
 
 model CommitteeMembership {
@@ -785,9 +784,10 @@ model ServerVariable {
 }
 
 model DocumentDetails {
-  id          Int    @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   title       String
-  description String @db.Text
+  description String  @db.Text
+  requestedBy String?
 
   committee   Committee @relation(fields: [committeeId], references: [id], onDelete: Cascade)
   committeeId Int
@@ -811,7 +811,8 @@ model Document {
   generatedBy   User @relation(fields: [generatedById], references: [id], onDelete: Cascade)
   generatedById Int
 
-  version Int @default(1)
+  version   Int @default(1)
+  pageCount Int @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

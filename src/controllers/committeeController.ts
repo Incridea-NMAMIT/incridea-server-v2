@@ -26,15 +26,7 @@ async function ensureUserFreeForCommittee(userId: number, allowedCommitteeId?: n
     throw new AppError('User is already part of another committee', 400)
   }
 
-  const committeeAsHead = await prisma.committee.findFirst({ where: { headUserId: userId } })
-  if (committeeAsHead && committeeAsHead.id !== allowedCommitteeId) {
-    throw new AppError('User is already a head of another committee', 400)
-  }
-
-  const committeeAsCoHead = await prisma.committee.findFirst({ where: { coHeadUserId: userId } })
-  if (committeeAsCoHead && committeeAsCoHead.id !== allowedCommitteeId) {
-    throw new AppError('User is already a co-head of another committee', 400)
-  }
+  // ALLOW USER TO BE HEAD OF MULTIPLE COMMITTEES - Checks removed
 }
 
 export async function getCommitteeState(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -61,20 +53,23 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
       include: { Committee: true },
     })
 
-    const headCommittee = committees.find((c) => c.headUserId === userId)
-    const coHeadCommittee = committees.find((c) => c.coHeadUserId === userId)
+    const headCommittees = committees.filter((c) => c.headUserId === userId)
+    const coHeadCommittees = committees.filter((c) => c.coHeadUserId === userId)
+
+    const managedCommittees = [
+      ...headCommittees.map((c) => ({ id: c.id, name: c.name, role: 'HEAD' as const })),
+      ...coHeadCommittees.map((c) => ({ id: c.id, name: c.name, role: 'CO_HEAD' as const })),
+    ]
 
     let myRole: 'HEAD' | 'CO_HEAD' | 'MEMBER' | null = null
     let myCommittee: { id: number; name: CommitteeName } | null = null
     let membershipStatus: CommitteeMembershipStatus | null = null
 
-    if (headCommittee) {
-      myRole = 'HEAD'
-      myCommittee = { id: headCommittee.id, name: headCommittee.name }
-      membershipStatus = CommitteeMembershipStatus.APPROVED
-    } else if (coHeadCommittee) {
-      myRole = 'CO_HEAD'
-      myCommittee = { id: coHeadCommittee.id, name: coHeadCommittee.name }
+    if (managedCommittees.length > 0) {
+      // Prioritize HEAD role for the unified 'my' object, though UI should use managedCommittees
+      const primary = managedCommittees[0]
+      myRole = primary.role
+      myCommittee = { id: primary.id, name: primary.name }
       membershipStatus = CommitteeMembershipStatus.APPROVED
     } else if (membership) {
       myRole = 'MEMBER'
@@ -82,9 +77,13 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
       membershipStatus = membership.status
     }
 
+    // Fetch members for ALL managed committees
+    const managedCommitteeIds = managedCommittees.map((c) => c.id)
+
     let pendingApplicants: Array<{
       membershipId: number
       userId: number
+      committeeId: number
       name: string | null
       email: string
       phoneNumber: string
@@ -94,35 +93,38 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
     let approvedMembers: Array<{
       membershipId: number
       userId: number
+      committeeId: number
       name: string | null
       email: string
       phoneNumber: string
       status: CommitteeMembershipStatus
     }> = []
 
-    if (myRole === 'HEAD' && myCommittee) {
-      const members = await prisma.committeeMembership.findMany({
-        where: { committeeId: myCommittee.id },
+    if (managedCommitteeIds.length > 0) {
+      const allMembers = await prisma.committeeMembership.findMany({
+        where: { committeeId: { in: managedCommitteeIds } },
         include: { User: { select: userSummarySelect } },
         orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
       })
 
-      pendingApplicants = members
+      pendingApplicants = allMembers
         .filter((m) => m.status === CommitteeMembershipStatus.PENDING)
         .map((m) => ({
           membershipId: m.id,
           userId: m.userId,
+          committeeId: m.committeeId,
           name: m.User?.name ?? null,
           email: m.User?.email ?? '',
           phoneNumber: m.User?.phoneNumber ?? '',
           status: m.status,
         }))
 
-      approvedMembers = members
+      approvedMembers = allMembers
         .filter((m) => m.status === CommitteeMembershipStatus.APPROVED)
         .map((m) => ({
           membershipId: m.id,
           userId: m.userId,
+          committeeId: m.committeeId,
           name: m.User?.name ?? null,
           email: m.User?.email ?? '',
           phoneNumber: m.User?.phoneNumber ?? '',
@@ -149,6 +151,7 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
         committeeName: myCommittee?.name ?? null,
         status: membershipStatus,
       },
+      managedCommittees,
       pendingApplicants,
       approvedMembers,
     })

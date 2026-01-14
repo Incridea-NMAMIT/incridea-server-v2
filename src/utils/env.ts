@@ -14,6 +14,7 @@ const envSchema = z.object({
   SMTP_PASS: z.string().min(1),
   MAIL_FROM: z.string().min(1),
   FRONTEND_URL: z.string().url().optional(),
+  UPLOADTHING_TOKEN: z.string().min(1).optional(),
   UPLOADTHING_SECRET: z.string().min(1).optional(),
   UPLOADTHING_APP_ID: z.string().min(1).optional(),
 })
@@ -33,6 +34,7 @@ export const env = {
   port: parsed.data.PORT ?? '4000',
   frontendUrl: parsed.data.FRONTEND_URL ?? 'http://localhost:5173',
   uploadthing: {
+    token: parsed.data.UPLOADTHING_TOKEN,
     secret: parsed.data.UPLOADTHING_SECRET,
     appId: parsed.data.UPLOADTHING_APP_ID,
   },

@@ -1,6 +1,7 @@
 
 import { Router } from 'express';
 import { authenticateJWT } from '../middlewares/authMiddleware';
+import { upload } from '../config/multerConfig'; 
 import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments } from '../controllers/documentController';
 
 const router = Router();
@@ -8,10 +9,10 @@ const router = Router();
 router.use(authenticateJWT);
 
 // Create new document (Doc Team)
-router.post('/', createDocument);
+router.post('/create-document', authenticateJWT, upload.single('file'), createDocument);
 
 // Add revision (Doc Team)
-router.post('/revision', addRevision);
+router.post('/add-revision', authenticateJWT, upload.single('file'), addRevision);
 
 // Get documents for my committee (Head/CoHead)
 router.get('/', getDocumentsByCommittee);

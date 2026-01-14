@@ -11,6 +11,14 @@ export const uploadRouter = {
       userId: null,
     }))
     .onUploadComplete(async ({ file }) => ({ fileUrl: file.url })),
+  
+  pdfUploader: f({
+    pdf: { maxFileSize: '128MB', maxFileCount: 1 }
+  })
+    .middleware(() => ({
+      userId: null,
+    }))
+    .onUploadComplete(async ({ file }) => ({ fileUrl: file.url })),
 } satisfies FileRouter
 
 export type AppFileRouter = typeof uploadRouter
