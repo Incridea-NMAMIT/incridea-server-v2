@@ -17,6 +17,7 @@ import { auditLogger } from './middlewares/auditLogger'
 import organiserRoutes from './routes/organiserRoutes'
 
 import paymentRoutes from './routes/paymentRoutes'
+import documentRoutes from './routes/documentRoutes'
 
 const app = express()
 
@@ -27,6 +28,7 @@ app.use(cors({
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:3002',
+    'http://localhost:3003',
     'https://incridea.in',
     'https://api.incridea.in',
     'https://dashboard.incridea.in',
@@ -70,6 +72,8 @@ app.use('/api/quiz', quizRoutes)
 app.use('/api/judge', judgingRoutes)
 app.use('/api/payment', paymentRoutes)
 app.use('/api/uploadthing', uploadthingHandler)
+app.use('/api/documents', documentRoutes)
+
 
 app.use((_req, res) => {
   res.status(404).json({ message: 'Route not found' })

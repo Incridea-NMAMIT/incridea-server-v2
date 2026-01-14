@@ -1,8 +1,120 @@
 import type { Request, Response } from 'express'
 import crypto from 'crypto'
 import prisma from '../prisma/client'
-import { RAZORPAY_WEBHOOK_SECRET } from '../services/razorpay'
-import { Status } from '@prisma/client'
+import { RAZORPAY_WEBHOOK_SECRET, razorpay } from '../services/razorpay'
+import { Status, PaymentType } from '@prisma/client'
+import { listVariables } from '../services/adminService'
+import { generatePID } from '../services/pidService'
+
+export async function initiatePayment(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.id
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized' })
+    }
+
+    const { registrationId } = req.body
+
+    if (!registrationId) {
+      return res.status(400).json({ message: 'Registration option is required' })
+    }
+
+    // Fetch latest fee variables
+    const variables = await listVariables()
+    const getFee = (key: string) => {
+      const v = variables.find((variable) => variable.key === key)
+      const parsed = Number(v?.value)
+      return Number.isFinite(parsed) ? parsed : 0
+    }
+
+    let feeKey = ''
+    switch (registrationId) {
+      case 'internal-onspot':
+        feeKey = 'internalRegistrationOnSpot'
+        break
+      case 'internal-merch':
+        feeKey = 'internalRegistrationFeeInclusiveMerch'
+        break
+      case 'internal-pass':
+        feeKey = 'internalRegistrationFeeGen'
+        break
+      case 'external-onspot':
+        feeKey = 'externalRegistrationFeeOnSpot'
+        break
+      case 'external-early':
+        feeKey = 'externalRegistrationFee'
+        break
+      default:
+        // Optional: Handle ALUMNI if needed, but frontend didn't show it explicitly in the map above yet for 'alumni' ID.
+        // If the user sends something else
+        return res.status(400).json({ message: 'Invalid registration option' })
+    }
+
+    const amount = getFee(feeKey)
+
+    if (amount <= 0) {
+      return res.status(400).json({ message: 'Invalid fee amount configuration' })
+    }
+
+    // Create Razorpay Order
+    // Amount in paisa
+    // We want the platform to receive `amount` (which is in INR).
+    // Razorpay deducts 2.36% (0.0236) from the total transaction amount.
+    // The user wants the total transaction amount to be rounded up to the next whole Rupee.
+    
+    // 1. Calculate the exact gross amount required: T_exact = amount / (1 - 0.0236)
+    // 2. Round up to the next whole Rupee: T_rounded = Math.ceil(T_exact)
+    // 3. Convert to paisa: T_paisa = T_rounded * 100
+
+    const amountInRupees = Math.ceil(amount / (1 - 0.0236))
+    const amountInPaisa = amountInRupees * 100
+
+    const orderOptions = {
+        amount: amountInPaisa,
+        currency: 'INR',
+        receipt: `receipt_${Date.now()}_${userId}`,
+        notes: {
+            userId: String(userId),
+            registrationId,
+            type: PaymentType.FEST_REGISTRATION
+        }
+    }
+
+    const order = await razorpay.orders.create(orderOptions)
+
+    if (!order) {
+        return res.status(500).json({ message: 'Failed to create payment order' })
+    }
+
+    // Save to DB
+    await prisma.paymentOrder.create({
+        data: {
+            orderId: order.id,
+            amount: amount,
+            status: Status.PENDING,
+            type: PaymentType.FEST_REGISTRATION,
+            userId,
+            paymentData: order as any // Storing the initial order data
+        }
+    })
+
+    return res.status(200).json({
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        key: process.env.RAZORPAY_KEY_ID,
+        name: 'Incridea', // Or fetch from config
+        description: 'Fest Registration',
+        prefill: {
+            // We can optionally return user details if we want frontend to prefill
+        }
+    })
+
+  } catch (error) {
+    console.error('Initiate Payment Error:', error)
+    return res.status(500).json({ message: 'Internal Server Error' })
+  }
+}
 
 
 export async function handleRazorpayWebhook(req: Request, res: Response) {
@@ -41,18 +153,54 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
       const orderId = paymentEntity.order_id
       
       // Update PaymentOrder status
-      const paymentOrder = await prisma.paymentOrder.update({
-        where: { orderId },
-        data: {
-          status: Status.SUCCESS,
-          paymentData: paymentEntity,
-        },
-      })
+      // We might need to find by orderId
+      try {
+        const paymentOrder = await prisma.paymentOrder.update({
+            where: { orderId },
+            data: {
+            status: Status.SUCCESS,
+            paymentData: paymentEntity,
+            },
+        })
+        console.log(`Payment successful for order ${orderId}, User ID: ${paymentOrder.userId}`)
+
+        // Generate PID if it's a FEST_REGISTRATION
+        if (paymentOrder.type === PaymentType.FEST_REGISTRATION) {
+            try {
+                // Determine userId from paymentOrder (it's already there)
+                // Import generatePID top level
+                await generatePID(paymentOrder.userId, paymentOrder.orderId)
+                console.log(`PID generated for User ID: ${paymentOrder.userId}`)
+            } catch (pidError) {
+                console.error('Error generating PID:', pidError)
+                // Don't fail the webhook? Or should we?
+                // For now log it to manual intervention maybe.
+            }
+        }
+      } catch (err) {
+          console.error(`PaymentOrder not found for orderId: ${orderId}`)
+          // If not found, it might be an event payment or something else.
+          // For now, we just log.
+      }
+    } else if (event.event === 'payment.failed') {
+      const paymentEntity = event.payload.payment.entity
+      const orderId = paymentEntity.order_id
       
-      console.log(`Payment successful for order ${orderId}, User ID: ${paymentOrder.userId}`)
+      try {
+        const paymentOrder = await prisma.paymentOrder.update({
+            where: { orderId },
+            data: {
+            status: Status.FAILED,
+            paymentData: paymentEntity,
+            },
+        })
+        console.log(`Payment failed for order ${orderId}, User ID: ${paymentOrder.userId}`)
+      } catch (err) {
+          console.error(`PaymentOrder not found for orderId: ${orderId}`)
+      }
     }
 
-    // Handle other events if necessary (e.g., payment.failed)
+    // Handle other events if necessary
 
     return res.status(200).json({ status: 'ok' })
   } catch (error) {

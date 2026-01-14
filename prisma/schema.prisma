@@ -72,7 +72,10 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  PID       PID?
   WebLog    WebLog[]
+  documents Document[]
 
   @@index([collegeId])
   @@index([id])
@@ -157,9 +160,10 @@ model Committee {
   coHeadUser User? @relation("CommitteeCoHeadUser", fields: [coHeadUserId], references: [id], onDelete: SetNull)
 
   Members CommitteeMembership[]
+  documentDetails DocumentDetails[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 }
 
 model CommitteeMembership {
@@ -197,6 +201,8 @@ model Event {
   isStarted   Boolean       @default(false)
   branchId    Int?
   Branch      Branch?       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  day DayType?
 
   Teams Team[]
 
@@ -274,6 +280,7 @@ model PaymentOrder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  PID       PID?
 
   @@index([userId])
 }
@@ -742,4 +749,73 @@ enum Category {
   INTERNAL
   EXTERNAL
   ALUMNI
+}
+
+model PID {
+  id      Int    @id @default(autoincrement())
+  pidCode String @unique
+
+  userId Int  @unique
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  paymentOrderId String       @unique
+  PaymentOrder   PaymentOrder @relation(fields: [paymentOrderId], references: [orderId], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([pidCode])
+}
+
+model PriorUser {
+  id          Int      @id @default(autoincrement())
+  email       String   @unique
+  name        String?
+  phoneNumber String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ServerVariable {
+  key       String   @id
+  value     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DocumentDetails {
+  id          Int    @id @default(autoincrement())
+  title       String
+  description String @db.Text
+
+  committee   Committee @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  committeeId Int
+
+  Documents Document[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([committeeId])
+}
+
+model Document {
+  id           Int    @id @default(autoincrement())
+  documentCode String @unique
+  fileUrl      String
+
+  docDetails   DocumentDetails @relation(fields: [docDetailsId], references: [id], onDelete: Cascade)
+  docDetailsId Int
+
+  generatedBy   User @relation(fields: [generatedById], references: [id], onDelete: Cascade)
+  generatedById Int
+
+  version Int @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([docDetailsId])
+  @@index([generatedById])
 }
