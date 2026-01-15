@@ -1,39 +1,49 @@
 import prisma from '../prisma/client'
 
+const getPid = async (userId: number) => {
+  const pid = await prisma.pID.findUnique({
+    where: { userId },
+  });
+  if (!pid) throw new Error('PID not found. Please complete fest registration first.');
+  return pid;
+};
+
 export const registerSoloEvent = async (userId: number, eventId: number) => {
-  const event = await prisma.event.findUnique({
-    where: { id: eventId },
-  })
+  const [pid, event] = await Promise.all([
+    getPid(userId),
+    prisma.event.findUnique({ where: { id: eventId } })
+  ]);
+
   if (!event) throw new Error('Event not found')
 
-  if (event.eventType === 'TEAM') throw new Error('Event is team')
+  if (event.eventType === 'TEAM' || event.eventType === 'TEAM_MULTIPLE_ENTRY') 
+    throw new Error('Event is a team event')
 
   const isPaidEvent = event.fees > 0
+  const teamName = pid.pidCode;
   
-  // Check if already registered
-  const registeredTeam = await prisma.team.findMany({
-    where: {
-      eventId,
-      TeamMembers: {
-        some: {
-          userId,
+  const [registeredTeam, orphanedTeam] = await Promise.all([
+    prisma.team.findFirst({
+      where: {
+        eventId,
+        TeamMembers: {
+          some: {
+            pidId: pid.id,
+          },
         },
       },
-    },
-  })
-  if (registeredTeam.length > 0) throw new Error('Already registered')
+    }),
+    prisma.team.findFirst({
+        where: {
+            eventId,
+            name: teamName
+        }
+    })
+  ]);
 
-  // Check for orphaned team (same name/userId, but user not member)
-  const orphanedTeam = await prisma.team.findFirst({
-    where: {
-      eventId,
-      name: userId.toString()
-    }
-  })
+  if (registeredTeam) throw new Error('Already registered')
 
   if (orphanedTeam) {
-    // If it exists but user wasn't found in registeredTeam check above, it's orphaned.
-    // We should delete it to allow re-registration.
     await prisma.team.delete({
         where: { id: orphanedTeam.id }
     })
@@ -41,13 +51,13 @@ export const registerSoloEvent = async (userId: number, eventId: number) => {
 
   return await prisma.team.create({
     data: {
-      name: userId.toString(),
+      name: teamName,
       eventId,
-      leaderId: userId,
+      leaderId: pid.id,
       confirmed: !isPaidEvent,
       TeamMembers: {
         create: {
-          userId,
+          pidId: pid.id,
         },
       },
     },
@@ -55,54 +65,44 @@ export const registerSoloEvent = async (userId: number, eventId: number) => {
 }
 
 export const createTeam = async (userId: number, eventId: number, name: string) => {
-  const event = await prisma.event.findUnique({
-    where: { id: eventId },
-  })
+  const [pid, event] = await Promise.all([
+    getPid(userId),
+    prisma.event.findUnique({ where: { id: eventId } })
+  ]);
+  
   if (!event) throw new Error('Event not found')
 
   if (event.eventType === 'INDIVIDUAL' || event.eventType === 'INDIVIDUAL_MULTIPLE_ENTRY')
     throw new Error('Event is individual')
 
-  // Check if already registered
-  const registeredTeam = await prisma.team.findMany({
-    where: {
-      eventId,
-      TeamMembers: {
-        some: {
-          userId,
+  const [registeredTeam, totalTeams, existingTeamName] = await Promise.all([
+    prisma.team.findFirst({
+        where: {
+            eventId,
+            TeamMembers: { some: { pidId: pid.id } },
         },
-      },
-    },
-  })
-  if (registeredTeam.length > 0) throw new Error('Already registered')
-
-  if (event.maxTeams && event.maxTeams > 0) {
-    const totalTeams = await prisma.team.count({
-      where: {
-        eventId,
-        confirmed: true,
-      },
+    }),
+    event.maxTeams && event.maxTeams > 0 ? prisma.team.count({
+        where: { eventId, confirmed: true },
+    }) : Promise.resolve(0),
+    prisma.team.findFirst({
+        where: { name, eventId },
     })
-    if (totalTeams >= event.maxTeams) throw new Error('Event is full')
-  }
+  ]);
 
-  const existingTeamName = await prisma.team.findFirst({
-    where: {
-      name,
-      eventId,
-    },
-  })
+  if (registeredTeam) throw new Error('Already registered')
+  if (event.maxTeams && event.maxTeams > 0 && totalTeams >= event.maxTeams) throw new Error('Event is full')
   if (existingTeamName) throw new Error('Team name already exists')
 
   return await prisma.team.create({
     data: {
       name,
       eventId,
-      leaderId: userId,
+      leaderId: pid.id,
       confirmed: false,
       TeamMembers: {
         create: {
-          userId,
+          pidId: pid.id,
         },
       },
     },
@@ -110,102 +110,121 @@ export const createTeam = async (userId: number, eventId: number, name: string) 
 }
 
 export const joinTeam = async (userId: number, teamId: number, _collegeId?: number) => {
-  const team = await prisma.team.findUnique({
-    where: { id: teamId },
-    include: {
-      TeamMembers: true,
-    },
-  })
+  const [pid, team] = await Promise.all([
+    prisma.pID.findUnique({
+        where: { userId },
+        include: { User: true }
+    }),
+    prisma.team.findUnique({
+        where: { id: teamId },
+        include: {
+            TeamMembers: true,
+            Leader: { include: { User: true } },
+            Event: true
+        },
+    })
+  ]);
+
+  if (!pid) throw new Error('PID not found. Please complete fest registration first.');
   if (!team) throw new Error('Team not found')
   if (team.confirmed) throw new Error("Can't join team, Team is confirmed")
 
-  const event = await prisma.event.findUnique({
-    where: { id: team.eventId },
-  })
+  const event = team.Event;
+  // This should not happen if integrity is maintained, but just in case
   if (!event) throw new Error('Event not found')
 
   if (event.eventType === 'INDIVIDUAL' || event.eventType === 'INDIVIDUAL_MULTIPLE_ENTRY')
     throw new Error('Event is individual')
 
-  // Check if already registered
-  const registeredTeam = await prisma.team.findMany({
+  const registeredTeam = await prisma.team.findFirst({
     where: {
       eventId: event.id,
       TeamMembers: {
         some: {
-          userId,
+          pidId: pid.id,
         },
       },
     },
   })
-  if (registeredTeam.length > 0) throw new Error('Already registered')
+  if (registeredTeam) throw new Error('Already registered')
 
   if (team.TeamMembers.length >= event.maxTeamSize) throw new Error('Team is full')
 
-  // Cross-college check (simplified from original)
-  // Need to fetch leader's collegeId if strict check is needed. 
-  // Assuming 'collegeId' is passed or fetched.
-  // For now, replicating logic:
-  const leader = await prisma.user.findUnique({ where: { id: team.leaderId! } })
-  const ignore = [27, 50, 52, 53, 54, 56]; // IDs from original code
-  
-  // Note: logic requires fetching user's collegeId. Assuming userId implies we can fetch user.
-  const user = await prisma.user.findUnique({ where: { id: userId } })
-  if (!user) throw new Error('User not found')
+  // Cross-college check
+  const leaderUser = team.Leader?.User;
+  const userUser = pid.User;
 
-  if (leader?.collegeId !== user.collegeId && !ignore.includes(event.id)) {
+  if (!leaderUser || !userUser) throw new Error('User details not found');
+  
+  const ignore = [27, 50, 52, 53, 54, 56]; 
+
+  if (leaderUser.collegeId !== userUser.collegeId && !ignore.includes(event.id)) {
      throw new Error('Team members should belong to same college')
   }
 
   return await prisma.teamMember.create({
     data: {
       teamId,
-      userId,
+      pidId: pid.id,
     },
   })
 }
 
 export const getMyTeam = async (userId: number, eventId: number) => {
+  const pid = await prisma.pID.findUnique({
+    where: { userId },
+  });
+  
+  if (!pid) return null;
+
   return await prisma.team.findFirst({
     where: {
       eventId,
       TeamMembers: {
         some: {
-          userId,
+          pidId: pid.id,
         },
       },
     },
     include: {
+      Leader: {
+        include: {
+            User: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true
+                }
+            }
+        }
+      },
       TeamMembers: {
         include: {
-          User: {
-            select: {
-               id: true,
-               name: true,
-               email: true
+          PID: {
+            include: {
+                User: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true
+                    }
+                }
             }
           }
         }
       },
-      Event: {
-         include: {
-           Rounds: {
-            include: {
-              Quiz: true
-            }
-           }
-         }
-      }
     },
   })
 }
 
 export const confirmTeam = async (userId: number, teamId: number) => {
+  const pid = await getPid(userId);
+
   const team = await prisma.team.findUnique({
     where: { id: teamId },
   })
   if (!team) throw new Error('Team not found')
-  if (team.leaderId !== userId) throw new Error('Not authorized only leader can confirm team')
+  if (team.leaderId !== pid.id) throw new Error('Not authorized only leader can confirm team')
 
   const event = await prisma.event.findUnique({
     where: { id: team.eventId },
@@ -226,10 +245,12 @@ export const confirmTeam = async (userId: number, teamId: number) => {
 }
 
 export const leaveTeam = async (userId: number, teamId: number) => {
+    const pid = await getPid(userId);
+
     const team = await prisma.team.findUnique({ where: { id: teamId }, include: { TeamMembers: true } })
     if(!team) throw new Error('Team not found')
     
-    const isMember = team.TeamMembers.some((tm: any) => tm.userId === userId)
+    const isMember = team.TeamMembers.some((tm: any) => tm.pidId === pid.id)
     if(!isMember) throw new Error('Not a member of team')
     
     // We need to check if event is paid to block leaving confirmed teams
@@ -240,14 +261,10 @@ export const leaveTeam = async (userId: number, teamId: number) => {
 
     if(team.confirmed && event.fees > 0) throw new Error('Team is confirmed and paid. Cannot leave.')
 
-    // If leader leaves? Original code allows deleting member. 
-    // Wait, original deleteTeam logic is separate. 
-    // Original leaveTeam logic is specifically deleting the TeamMember.
-    
     await prisma.teamMember.delete({
         where: {
-            userId_teamId: {
-                userId,
+            pidId_teamId: {
+                pidId: pid.id,
                 teamId
             }
         }
@@ -269,21 +286,21 @@ export const leaveTeam = async (userId: number, teamId: number) => {
 }
 
 export const deleteTeam = async (userId: number, teamId: number) => {
+  const pid = await getPid(userId);
+
   const team = await prisma.team.findUnique({
     where: { id: teamId },
   })
   if (!team) throw new Error('Team not found')
 
-  if (team.leaderId !== userId) throw new Error('Not authorized only leader can delete team')
+  if (team.leaderId !== pid.id) throw new Error('Not authorized only leader can delete team')
 
-  // We don't strictly need to check event existence unless there are event-specific locks, but good practice.
   const event = await prisma.event.findUnique({
     where: { id: team.eventId },
   })
   if (!event) throw new Error('Event not found')
 
   if (team.confirmed && event.fees > 0) throw new Error('Team is confirmed and paid. Cannot delete.')
-  // If free event, we allow deleting even if confirmed.
 
   return await prisma.team.delete({
     where: { id: teamId },

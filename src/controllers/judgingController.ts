@@ -93,12 +93,16 @@ export async function getTeamsByRound(req: AuthenticatedRequest, res: Response, 
       include: {
         TeamMembers: {
            include: {
-             User: {
-                select: {
-                    name: true,
-                    email: true,
-                    phoneNumber: true,
-                    id: true
+             PID: {
+                include: {
+                    User: {
+                        select: {
+                            name: true,
+                            email: true,
+                            phoneNumber: true,
+                            id: true
+                        }
+                    }
                 }
              }
            }
@@ -379,17 +383,22 @@ export async function getAllWinners(req: AuthenticatedRequest, res: Response, ne
                 },
                 Team: {
                     include: {
-                        TeamMembers: {
-                            include: {
-                                User: {
-                                    select: {
-                                        name: true,
-                                        email: true,
-                                        phoneNumber: true
-                                    }
-                                }
-                            }
-                        }
+        TeamMembers: {
+           include: {
+             PID: {
+               include: {
+                 User: {
+                    select: {
+                        name: true,
+                        email: true,
+                        phoneNumber: true,
+                        id: true
+                    }
+                 }
+               }
+             }
+           }
+        },
                     }
                 }
             }

@@ -50,20 +50,20 @@ model User {
   collegeId Int     @default(1)
   College   College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
 
-  BranchRep   BranchRep?
-  UserInHotel UserInHotel?
-  Alumni      Alumni?
-  UserRoles   UserRole[]
+  BranchRep BranchRep?
+
+  Alumni    Alumni?
+  UserRoles UserRole[]
 
   CommitteeMembership CommitteeMembership?
   HeadOfCommittee     Committee[]          @relation("CommitteeHeadUser")
   CoHeadOfCommittee   Committee[]          @relation("CommitteeCoHeadUser")
 
-  Judges            Judge[]
-  ScoresGiven       Scores[]
-  CommentsGiven     Comments[]
-  Organisers        Organiser[]
-  TeamMembers       TeamMember[]
+  Judges        Judge[]
+  ScoresGiven   Scores[]
+  CommentsGiven Comments[]
+  Organisers    Organiser[]
+
   PaymentOrders     PaymentOrder[]
   RefreshTokens     RefreshToken[]
   CertificateIssue  CertificateIssue[]
@@ -73,9 +73,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  PID       PID?
-  WebLog    WebLog[]
-  documents Document[]
+  PID         PID?
+  WebLog      WebLog[]
+  documents   Document[]
+  teamMembers TeamMember[]
+
+  AccommodationPayment AccommodationPayment[]
+  AccommodationBooking AccommodationBooking[]
 
   @@index([collegeId])
   @@index([id])
@@ -224,6 +228,7 @@ model Team {
   confirmed Boolean @default(false)
   attended  Boolean @default(false)
   leaderId  Int?
+  Leader    PID?    @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: SetNull)
 
   eventId Int
   Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -242,6 +247,7 @@ model Team {
 
   @@unique([name, eventId])
   @@index([eventId, roundNo])
+  @@index([leaderId])
 }
 
 model Round {
@@ -350,17 +356,19 @@ model WebLog {
 model TeamMember {
   id Int @id @default(autoincrement())
 
-  userId Int
-  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pidId Int
+  PID   PID @relation(fields: [pidId], references: [id], onDelete: Cascade)
 
   teamId Int
   Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id])
+  userId    Int?
 
-  @@unique([userId, teamId])
-  @@index([teamId, userId])
+  @@unique([pidId, teamId])
+  @@index([teamId, pidId])
 }
 
 model Judge {
@@ -601,43 +609,6 @@ model Question {
   @@index([quizId])
 }
 
-model Hotel {
-  id Int @id @default(autoincrement())
-
-  name    String  @unique
-  details String?
-  price   Int
-
-  UserInHotel UserInHotel[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model UserInHotel {
-  id Int @id @default(autoincrement())
-
-  IdCard   String?
-  room     String?
-  AC       Boolean                    @default(false)
-  checkIn  DateTime?
-  checkOut DateTime?
-  gender   Gender
-  status   AccommodationBookingStatus @default(PENDING)
-
-  hotelId Int
-  Hotel   Hotel @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-
-  userId Int  @unique
-  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([hotelId])
-}
-
 enum Gender {
   MALE
   FEMALE
@@ -658,6 +629,7 @@ enum ProniteDay {
 enum PaymentType {
   FEST_REGISTRATION
   EVENT_REGISTRATION
+  ACC_REGISTRATION
 }
 
 enum Role {
@@ -761,8 +733,13 @@ model PID {
   paymentOrderId String       @unique
   PaymentOrder   PaymentOrder @relation(fields: [paymentOrderId], references: [orderId], onDelete: Cascade)
 
+  AccommodationPayment AccommodationPayment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  TeamMembers TeamMember[]
+  LedTeams    Team[]       @relation("TeamLeader")
 
   @@index([userId])
   @@index([pidCode])
@@ -842,4 +819,54 @@ model Document {
 
   @@index([docDetailsId])
   @@index([generatedById])
+}
+
+model AccommodationPayment {
+  id          String      @id @default(cuid())
+  orderId     String      @unique
+  amount      Int         @default(200)
+  paymentData Json?
+  status      Status      @default(PENDING)
+  type        PaymentType @default(ACC_REGISTRATION)
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  pidId Int?
+  PID   PID? @relation(fields: [pidId], references: [id], onDelete: SetNull)
+
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  accommodationBookings AccommodationBooking[]
+
+  @@index([userId])
+}
+
+model AccommodationBooking {
+  id                String                     @id @default(cuid())
+  accommodationType Gender
+  checkIn           DateTime
+  checkOut          DateTime
+  idCard            String?
+  invoice           String?
+  status            AccommodationBookingStatus @default(PENDING)
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  paymentId String?
+  Payment   AccommodationPayment? @relation(fields: [paymentId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model AccommodationRequests {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

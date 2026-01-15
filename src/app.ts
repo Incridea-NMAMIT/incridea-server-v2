@@ -18,6 +18,7 @@ import organiserRoutes from './routes/organiserRoutes'
 
 import paymentRoutes from './routes/paymentRoutes'
 import documentRoutes from './routes/documentRoutes'
+import accommodationRoutes from './routes/accommodationRoutes'
 
 const app = express()
 
@@ -73,6 +74,7 @@ app.use('/api/judge', judgingRoutes)
 app.use('/api/payment', paymentRoutes)
 app.use('/api/uploadthing', uploadthingHandler)
 app.use('/api/documents', documentRoutes)
+app.use('/api/accommodation', accommodationRoutes)
 
 
 app.use((_req, res) => {

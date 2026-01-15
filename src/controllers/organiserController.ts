@@ -128,14 +128,18 @@ export async function getOrganiserEventDetails(req: AuthenticatedRequest, res: R
           include: {
             TeamMembers: {
               include: {
-                User: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    phoneNumber: true,
-                    collegeId: true,
-                    College: { select: { name: true } }
+                PID: {
+                  include: {
+                    User: {
+                      select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        phoneNumber: true,
+                        collegeId: true,
+                        College: { select: { name: true } }
+                      },
+                    },
                   },
                 },
               },
@@ -216,7 +220,11 @@ export async function createTeam(req: AuthenticatedRequest, res: Response, next:
       include: {
           TeamMembers: {
               include: {
-                  User: true
+                  PID: {
+                    include: {
+                        User: true
+                    }
+                  }
               }
           }
       }
@@ -274,9 +282,15 @@ export async function addTeamMember(req: AuthenticatedRequest, res: Response, ne
 
     const { userId: targetUserId } = req.body as AddTeamMemberInput
 
+    const targetPid = await prisma.pID.findUnique({
+        where: { userId: targetUserId },
+        include: { User: true }
+    })
+    if (!targetPid) return res.status(404).json({ message: 'User not registered for fest (No PID)' })
+
     const team = await prisma.team.findUnique({ 
         where: { id: teamId },
-        include: { Event: true, TeamMembers: { include: { User: true } } }
+        include: { Event: true, TeamMembers: { include: { PID: { include: { User: true } } } } }
     })
     if (!team) return res.status(404).json({ message: 'Team not found' })
 
@@ -287,9 +301,6 @@ export async function addTeamMember(req: AuthenticatedRequest, res: Response, ne
         if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
-    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, include: { College: true } })
-    if (!targetUser) return res.status(404).json({ message: 'User not found' })
-
     // Validations consistent with source
     if (team.TeamMembers.length >= team.Event.maxTeamSize) {
         return res.status(400).json({ message: 'Team is full' })
@@ -299,7 +310,7 @@ export async function addTeamMember(req: AuthenticatedRequest, res: Response, ne
     if (team.Event.eventType !== 'INDIVIDUAL_MULTIPLE_ENTRY' && team.Event.eventType !== 'TEAM_MULTIPLE_ENTRY') {
          const existingRegistration = await prisma.teamMember.findFirst({
             where: {
-                userId: targetUserId,
+                pidId: targetPid.id,
                 Team: {
                     eventId: team.eventId
                 }
@@ -309,14 +320,10 @@ export async function addTeamMember(req: AuthenticatedRequest, res: Response, ne
     }
    
 
-    // College check logic from source (simplified)
-    // Source: if team has members, new member must be from same college unless event id is in ignore list.
-    // I will skip the ignore list for now or assume standard behavior (same college always required for teams unless mixed teams allowd).
-    // Source: if (user.collegeId !== leader?.collegeId && !ignore.includes(event.id))
-    // I'll replicate basic same-college check if team not empty.
+    // College check logic from source Check
     if (team.TeamMembers.length > 0) {
         const firstMember = team.TeamMembers[0]
-        if (firstMember.User.collegeId !== targetUser.collegeId) {
+        if (firstMember.PID?.User.collegeId !== targetPid.User.collegeId) {
              // You might need to add specific event exceptions here if needed
              // return res.status(400).json({ message: 'Team members must belong to the same college' })
         }
@@ -325,13 +332,13 @@ export async function addTeamMember(req: AuthenticatedRequest, res: Response, ne
     await prisma.teamMember.create({
         data: {
             teamId,
-            userId: targetUserId
+            pidId: targetPid.id
         }
     })
 
     // If no leader, set leader
     if (!team.leaderId) {
-        await prisma.team.update({ where: { id: teamId }, data: { leaderId: targetUserId } })
+        await prisma.team.update({ where: { id: teamId }, data: { leaderId: targetPid.id } })
     }
 
     return res.status(201).json({ message: 'Member added' })
@@ -359,10 +366,13 @@ export async function removeTeamMember(req: AuthenticatedRequest, res: Response,
         if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
+    const targetPid = await prisma.pID.findUnique({ where: { userId: targetUserId } })
+    if(!targetPid) return res.status(404).json({ message: 'PID not found for user' })
+
     await prisma.teamMember.delete({
         where: {
-            userId_teamId: {
-                userId: targetUserId,
+            pidId_teamId: {
+                pidId: targetPid.id,
                 teamId
             }
         }
