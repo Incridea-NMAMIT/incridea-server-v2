@@ -403,9 +403,21 @@ export async function requestPasswordReset(payload: ResetPasswordRequestInput) {
     throw new AppError('User not found', 404)
   }
 
-  const resetToken = jwt.sign({ sub: user.id, purpose: 'password-reset' }, env.jwtSecret, {
-    expiresIn: '15m',
+  // Create a verification token record
+  const verificationToken = await prisma.verificationToken.create({
+    data: {
+      userId: user.id,
+      type: 'RESET_PASSWORD',
+    },
   })
+
+  // Sign the token ID into the JWT. 
+  // We set JWT expiry to slightly longer than the business logic expiry (30m) to be safe, e.g., 40m.
+  const resetToken = jwt.sign(
+    { sub: verificationToken.id, purpose: 'password-reset' },
+    env.jwtSecret,
+    { expiresIn: '40m' }
+  )
 
   const resetLink = `${env.frontendUrl}/reset-password?token=${encodeURIComponent(resetToken)}`
 
@@ -413,7 +425,7 @@ export async function requestPasswordReset(payload: ResetPasswordRequestInput) {
     user.email,
     'Reset your password',
     `Click the link to reset your password: ${resetLink}
-This link expires in 15 minutes. If you did not request this, please ignore the email.`,
+This link expires in 30 minutes. If you did not request this, please ignore the email.`,
   )
 
   return { message: 'Password reset link sent' }
@@ -431,14 +443,37 @@ export async function resetPasswordWithToken(payload: ResetPasswordConfirmInput)
     throw new AppError('Invalid reset token', 400)
   }
 
-  const userId = typeof decoded.sub === 'string' ? Number(decoded.sub) : decoded.sub
-  const user = await prisma.user.findUnique({ where: { id: userId } })
-  if (!user) {
-    throw new AppError('User not found', 404)
+  const tokenId = decoded.sub as string // The JWT sub is now the VerificationToken ID
+
+  const dbToken = await prisma.verificationToken.findUnique({
+    where: { id: tokenId },
+    include: { User: true },
+  })
+
+  if (!dbToken) {
+    throw new AppError('Invalid reset token', 400)
   }
 
+  if (dbToken.revoked) {
+    throw new AppError('This reset link has already been used', 400)
+  }
+
+  // Check 30-minute expiry
+  const now = new Date()
+  const tokenAge = now.getTime() - dbToken.createdAt.getTime()
+  const thirtyMinutes = 30 * 60 * 1000
+
+  if (tokenAge > thirtyMinutes) {
+    throw new AppError('Reset link has expired', 400)
+  }
+
+  const user = dbToken.User
   const newHash = await hashPassword(payload.newPassword)
-  await prisma.user.update({ where: { id: user.id }, data: { password: newHash } })
+  
+  await prisma.$transaction([
+    prisma.user.update({ where: { id: user.id }, data: { password: newHash } }),
+    prisma.verificationToken.update({ where: { id: tokenId }, data: { revoked: true } }),
+  ])
 
   return { message: 'Password reset successfully' }
 }
