@@ -9,6 +9,7 @@ export const signupSchema = z
     password: z.string().min(8, 'Password must be at least 8 characters'),
     confirmPassword: z.string().min(8, 'Confirm your password'),
     phoneNumber: z.string().min(7, 'Phone number is required'),
+    gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
     selection: collegeSelection,
     collegeId: z.number().int().positive().optional(),
     yearOfGraduation: z.number().int().min(1950).max(new Date().getFullYear() + 10).optional(),

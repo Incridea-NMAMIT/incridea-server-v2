@@ -2,7 +2,7 @@ import type { Request, Response } from 'express'
 import crypto from 'crypto'
 import prisma from '../prisma/client'
 import { RAZORPAY_WEBHOOK_SECRET, razorpay } from '../services/razorpay'
-import { Status, PaymentType } from '@prisma/client'
+import { Status, PaymentType, AccommodationBookingStatus } from '@prisma/client'
 import { listVariables } from '../services/adminService'
 import { generatePID } from '../services/pidService'
 
@@ -152,42 +152,67 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
       const paymentEntity = event.payload.payment.entity
       const orderId = paymentEntity.order_id
       
-      // Update PaymentOrder status
-      // We might need to find by orderId
-      try {
-        const paymentOrder = await prisma.paymentOrder.update({
+      // 1. Check for Fest Registration Payment
+      const paymentOrder = await prisma.paymentOrder.findUnique({
+          where: { orderId }
+      })
+
+      if (paymentOrder) {
+          await prisma.paymentOrder.update({
             where: { orderId },
             data: {
-            status: Status.SUCCESS,
-            paymentData: paymentEntity,
+              status: Status.SUCCESS,
+              paymentData: paymentEntity,
             },
-        })
-        console.log(`Payment successful for order ${orderId}, User ID: ${paymentOrder.userId}`)
+          })
+          console.log(`Payment successful for order ${orderId}, User ID: ${paymentOrder.userId}`)
 
-        // Generate PID if it's a FEST_REGISTRATION
-        if (paymentOrder.type === PaymentType.FEST_REGISTRATION) {
-            try {
-                // Determine userId from paymentOrder (it's already there)
-                // Import generatePID top level
-                await generatePID(paymentOrder.userId, paymentOrder.orderId)
-                console.log(`PID generated for User ID: ${paymentOrder.userId}`)
-            } catch (pidError) {
-                console.error('Error generating PID:', pidError)
-                // Don't fail the webhook? Or should we?
-                // For now log it to manual intervention maybe.
-            }
-        }
-      } catch (err) {
-          console.error(`PaymentOrder not found for orderId: ${orderId}`)
-          // If not found, it might be an event payment or something else.
-          // For now, we just log.
+          // Generate PID if it's a FEST_REGISTRATION
+          if (paymentOrder.type === PaymentType.FEST_REGISTRATION) {
+              try {
+                  await generatePID(paymentOrder.userId, paymentOrder.orderId)
+                  console.log(`PID generated for User ID: ${paymentOrder.userId}`)
+              } catch (pidError) {
+                  console.error('Error generating PID:', pidError)
+              }
+          }
+          return res.status(200).json({ status: 'ok' })
       }
+
+      // 2. Check for Accommodation Payment
+      const accPayment = await prisma.accommodationPayment.findUnique({
+          where: { orderId }
+      })
+
+      if (accPayment) {
+          await prisma.accommodationPayment.update({
+              where: { orderId },
+              data: {
+                  status: Status.SUCCESS,
+                  paymentData: paymentEntity
+              }
+          })
+          
+          // Confirm all linked bookings
+          await prisma.accommodationBooking.updateMany({
+              where: { paymentId: accPayment.id },
+              data: { status: AccommodationBookingStatus.CONFIRMED }
+          })
+
+          console.log(`Accommodation Payment successful for order ${orderId}`)
+          return res.status(200).json({ status: 'ok' })
+      }
+
+      console.error(`Order not found for orderId: ${orderId}`)
+
     } else if (event.event === 'payment.failed') {
       const paymentEntity = event.payload.payment.entity
       const orderId = paymentEntity.order_id
       
-      try {
-        const paymentOrder = await prisma.paymentOrder.update({
+      const paymentOrder = await prisma.paymentOrder.findUnique({ where: { orderId } })
+      
+      if (paymentOrder) {
+        await prisma.paymentOrder.update({
             where: { orderId },
             data: {
             status: Status.FAILED,
@@ -195,9 +220,31 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
             },
         })
         console.log(`Payment failed for order ${orderId}, User ID: ${paymentOrder.userId}`)
-      } catch (err) {
-          console.error(`PaymentOrder not found for orderId: ${orderId}`)
+        return res.status(200).json({ status: 'ok' })
       }
+
+      const accPayment = await prisma.accommodationPayment.findUnique({ where: { orderId } })
+      
+      if (accPayment) {
+          await prisma.accommodationPayment.update({
+              where: { orderId },
+              data: {
+                  status: Status.FAILED,
+                  paymentData: paymentEntity
+              }
+          })
+          
+          // Cancel linked bookings
+          await prisma.accommodationBooking.updateMany({
+              where: { paymentId: accPayment.id },
+              data: { status: AccommodationBookingStatus.CANCELLED }
+          })
+          
+          console.log(`Accommodation Payment failed for order ${orderId}`)
+          return res.status(200).json({ status: 'ok' })
+      }
+
+      console.error(`Order not found for orderId: ${orderId}`)
     }
 
     // Handle other events if necessary

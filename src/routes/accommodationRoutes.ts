@@ -5,9 +5,10 @@ import {
   checkAvailability,
   createIndividualBooking,
   createTeamBooking,
-  getBookings
+  getBookings,
+  getUserByPid
 } from '../controllers/accommodationController'
-import { authenticateJWT, AuthenticatedRequest } from '../middlewares/authMiddleware'
+import { authenticateJWT } from '../middlewares/authMiddleware'
 import { RequestHandler } from 'express'
 
 const router = express.Router()
@@ -32,5 +33,7 @@ router.post(
      // Add proper role check here. For now assume verifyAuth + manual check in controller or specific middleware
      getBookings as unknown as RequestHandler
  )
+
+router.get('/user/:pid', authenticateJWT, getUserByPid as unknown as RequestHandler)
 
 export default router

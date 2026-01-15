@@ -40,6 +40,7 @@ model User {
   name         String
   email        String    @unique
   profileImage String?
+  gender       Gender    @default(MALE)
   isVerified   Boolean   @default(false)
   password     String    @db.Text
   phoneNumber  String
@@ -612,7 +613,6 @@ model Question {
 enum Gender {
   MALE
   FEMALE
-  OTHER
 }
 
 enum AccommodationBookingStatus {

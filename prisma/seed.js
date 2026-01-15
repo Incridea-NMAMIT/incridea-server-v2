@@ -69,6 +69,7 @@ async function main() {
     'externalRegistrationFeeOnSpot',
     'internalRegistrationOnSpot',
     'alumniRegistrationFee',
+    'accomodationFee',
   ]
 
   await Promise.all(variableSeeds.map((key) => ensureVariable(key, '0')))
@@ -77,7 +78,6 @@ async function main() {
     { key: 'incrideaDay1', value: '2026-03-05T00:00:00.000Z' },
     { key: 'incrideaDay2', value: '2026-03-06T00:00:00.000Z' },
     { key: 'incrideaDay3', value: '2026-03-07T00:00:00.000Z' },
-    { key: 'incrideaDay4', value: '2026-03-08T00:00:00.000Z' },
   ]
 
   await Promise.all(eventDaySeeds.map(({ key, value }) => ensureVariable(key, value)))

@@ -44,23 +44,23 @@ async function ensureNmamitCollege() {
   })
 }
 
-async function ensureHoldingHotel() {
-  return prisma.hotel.upsert({
-    where: { name: 'UNASSIGNED' },
-    update: {},
-    create: {
-      name: 'UNASSIGNED',
-      details: 'Pending accommodation allocation',
-      price: 0,
-    },
-  })
-}
+// async function ensureHoldingHotel() {
+//   return prisma.hotel.upsert({
+//     where: { name: 'UNASSIGNED' },
+//     update: {},
+//     create: {
+//       name: 'UNASSIGNED',
+//       details: 'Pending accommodation allocation',
+//       price: 0,
+//     },
+//   })
+// }
 
-function parseDateOrNull(value?: string | null) {
-  if (!value) return null
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
+// function parseDateOrNull(value?: string | null) {
+//   if (!value) return null
+//   const parsed = new Date(value)
+//   return Number.isNaN(parsed.getTime()) ? null : parsed
+// }
 
 function generateOtpBundle() {
   const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
@@ -122,6 +122,7 @@ export async function createUserWithProfile(payload: SignupInput) {
     email,
     password: passwordHash,
     phoneNumber: payload.phoneNumber,
+    gender: payload.gender as Gender,
     category,
     isVerified: false,
     collegeId: resolvedCollegeId,
@@ -152,29 +153,29 @@ export async function createUserWithProfile(payload: SignupInput) {
   }
 
   if (payload.accommodation) {
-    const holdingHotel = await ensureHoldingHotel()
-    const gender: Gender = payload.accommodation.gender as Gender
-    const checkIn = parseDateOrNull(payload.accommodation.checkIn ?? null)
-    const checkOut = parseDateOrNull(payload.accommodation.checkOut ?? null)
+    // const holdingHotel = await ensureHoldingHotel()
+    // const gender: Gender = payload.gender as Gender
+    // const checkIn = parseDateOrNull(payload.accommodation.checkIn ?? null)
+    // const checkOut = parseDateOrNull(payload.accommodation.checkOut ?? null)
 
-    await prisma.userInHotel.upsert({
-      where: { userId: user.id },
-      update: {
-        IdCard: payload.accommodation.idProofUrl ?? null,
-        gender,
-        checkIn,
-        checkOut,
-        hotelId: holdingHotel.id,
-      },
-      create: {
-        userId: user.id,
-        IdCard: payload.accommodation.idProofUrl ?? null,
-        gender,
-        checkIn,
-        checkOut,
-        hotelId: holdingHotel.id,
-      },
-    })
+    // await prisma.userInHotel.upsert({
+    //   where: { userId: user.id },
+    //   update: {
+    //     IdCard: payload.accommodation.idProofUrl ?? null,
+    //     gender,
+    //     checkIn,
+    //     checkOut,
+    //     hotelId: holdingHotel.id,
+    //   },
+    //   create: {
+    //     userId: user.id,
+    //     IdCard: payload.accommodation.idProofUrl ?? null,
+    //     gender,
+    //     checkIn,
+    //     checkOut,
+    //     hotelId: holdingHotel.id,
+    //   },
+    // })
   }
 
   await sendEmail(

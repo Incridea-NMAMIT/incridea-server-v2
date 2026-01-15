@@ -1,4 +1,4 @@
-import type { Response, NextFunction } from 'express'
+import type { Request, Response, NextFunction } from 'express'
 import prisma from '../prisma/client'
 import { Gender, AccommodationBookingStatus, PaymentType, Status, CommitteeName } from '@prisma/client'
 import { z } from 'zod'
@@ -6,7 +6,7 @@ import { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import { razorpay } from '../services/razorpay'
 
 // Get available accommodation stats
-export async function getStats(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function getStats(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const boysVar = await prisma.accommodationRequests.findUnique({ where: { key: 'BoysAccCount' } })
     const girlsVar = await prisma.accommodationRequests.findUnique({ where: { key: 'GirlsAccCount' } })
@@ -111,7 +111,7 @@ export async function checkAvailability(req: AuthenticatedRequest, res: Response
 }
 
 // Create Booking (Individual)
-export async function createIndividualBooking(req: Request, res: Response, next: NextFunction) {
+export async function createIndividualBooking(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const userId = req.user?.id
     if (!userId) return res.status(401).json({ message: 'Unauthorized' })
@@ -193,7 +193,7 @@ export async function createIndividualBooking(req: Request, res: Response, next:
 }
 
 // Create Booking (Team)
-export async function createTeamBooking(req: Request, res: Response, next: NextFunction) {
+export async function createTeamBooking(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const userId = req.user?.id
     if (!userId) return res.status(401).json({ message: 'Unauthorized' })
@@ -281,7 +281,6 @@ export async function createTeamBooking(req: Request, res: Response, next: NextF
       const bookings = []
       for (const member of body.members) {
         // Try to link to existing user if code provided
-        let memberUserId: number | undefined
         // Logic to find user by code (PID or ID) would go here if needed
         // For now, we might just store the booking linked to the primary user or create a "guest" record?
         // The prompt says "scanned QR of other team members", implying they are users efficiently.
@@ -348,6 +347,37 @@ export async function getBookings(req: Request, res: Response, next: NextFunctio
     const total = await prisma.accommodationBooking.count({ where })
 
     return res.json({ bookings, total, pages: Math.ceil(total / Number(limit)) })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+// Get user by PID
+export async function getUserByPid(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    const { pid } = req.params
+    if (!pid) return res.status(400).json({ message: 'PID is required' })
+
+    const pidRecord = await prisma.pID.findUnique({
+      where: { pidCode: pid },
+      include: {
+        User: {
+          select: {
+            name: true,
+            email: true,
+            phoneNumber: true,
+            gender: true,
+            collegeId: true
+          }
+        }
+      }
+    })
+
+    if (!pidRecord || !pidRecord.User) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    return res.json(pidRecord.User)
   } catch (error) {
     return next(error)
   }
