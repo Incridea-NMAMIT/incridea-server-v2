@@ -161,6 +161,7 @@ model Committee {
 
   Members         CommitteeMembership[]
   documentDetails DocumentDetails[]
+  documentAccess  DocumentAccess[]
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 }
@@ -792,12 +793,34 @@ model DocumentDetails {
   committee   Committee @relation(fields: [committeeId], references: [id], onDelete: Cascade)
   committeeId Int
 
+  isClassified   Boolean          @default(false)
+  documentAccess DocumentAccess[]
+
   Documents Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([committeeId])
+}
+
+model DocumentAccess {
+  id          Int        @id @default(autoincrement())
+  documentId  Int
+  committeeId Int
+  accessType  AccessType
+
+  document  DocumentDetails @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  committee Committee       @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, committeeId])
+  @@index([committeeId])
+  @@index([documentId])
+}
+
+enum AccessType {
+  HEAD_ONLY
+  HEAD_AND_COHEAD
 }
 
 model Document {

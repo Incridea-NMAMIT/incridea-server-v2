@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { authenticateJWT } from '../middlewares/authMiddleware';
 import { upload } from '../config/multerConfig'; 
-import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments } from '../controllers/documentController';
+import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments, shareDocumentWithCoHead } from '../controllers/documentController';
 
 const router = Router();
 
@@ -19,5 +19,8 @@ router.get('/', getDocumentsByCommittee);
 
 // Get all documents (Doc Team/Admin)
 router.get('/all', getAllDocuments);
+
+// Share document (Doc Head)
+router.post('/share-document', authenticateJWT, shareDocumentWithCoHead);
 
 export default router;

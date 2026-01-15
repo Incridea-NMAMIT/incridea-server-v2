@@ -175,6 +175,17 @@ export async function applyToCommittee(req: AuthenticatedRequest, res: Response,
       return res.status(403).json({ message: 'Committee registrations are closed' })
     }
 
+    // Fetch current user name if we need to compare/update
+    if (payload.name) {
+      const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
+      if (currentUser && currentUser.name !== payload.name) {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { name: payload.name },
+        })
+      }
+    }
+
     await ensureUserFreeForCommittee(userId)
 
     const committee = await prisma.committee.findUnique({ where: { name: payload.committee } })

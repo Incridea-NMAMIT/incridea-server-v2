@@ -32,9 +32,23 @@ const CommitteeCodeMap: Record<CommitteeName, string> = {
 
 export const createDocument = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { title, description, committee, requestedBy } = req.body;
+        const { title, description, committee, requestedBy, isClassified: isClassifiedStr, sharedCommittees: sharedCommitteesStr } = req.body;
         const file = req.file;
         const userId = req.user?.id;
+        
+        const isClassified = isClassifiedStr === 'true';
+        let sharedCommittees: { name: string, access: 'HEAD_ONLY' | 'HEAD_AND_COHEAD' }[] = [];
+        if (sharedCommitteesStr) {
+            try {
+                // Parse the new structure: array of objects { name: string, access: AccessType }
+                const parsed = JSON.parse(sharedCommitteesStr);
+                if (Array.isArray(parsed)) {
+                    sharedCommittees = parsed;
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
         if (!file) return res.status(400).json({ message: 'No file uploaded' });
@@ -53,8 +67,12 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
             return res.status(403).json({ message: 'Forbidden: Only Documentation team can create documents' });
         }
 
-        const committeeCode = CommitteeCodeMap[committee as CommitteeName];
-        if (!committeeCode) return res.status(400).json({ message: 'Invalid committee' });
+        let committeeCode = CommitteeCodeMap[committee as CommitteeName];
+        if (isClassified) {
+            committeeCode = 'CLS';
+        }
+        
+        if (!committeeCode && !isClassified) return res.status(400).json({ message: 'Invalid committee' });
 
         const targetCommittee = await prisma.committee.findUnique({ where: { name: committee } });
         if (!targetCommittee) return res.status(400).json({ message: 'Target committee not found' });
@@ -86,7 +104,13 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
              return res.status(500).json({ message: 'Failed to upload stamped file' });
         }
 
-        const uploadedUrl = uploadResponse[0].data.url;
+        const uploadedUrl = uploadResponse[0].data.ufsUrl;
+
+        // Fetch shared committee IDs
+        const sharedCommitteeNames = sharedCommittees.map(sc => sc.name);
+        const sharedCommitteeRecords = await prisma.committee.findMany({
+            where: { name: { in: sharedCommitteeNames as CommitteeName[] } }
+        });
 
         const result = await prisma.$transaction(async (tx) => {
             const docDetails = await tx.documentDetails.create({
@@ -95,8 +119,25 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
                     description,
                     committeeId: targetCommittee.id,
                     requestedBy,
+                    isClassified,
                 }
             });
+
+            // Create DocumentAccess records
+            if (isClassified && sharedCommittees.length > 0) {
+                for (const sc of sharedCommittees) {
+                    const com = sharedCommitteeRecords.find(c => c.name === sc.name);
+                    if (com) {
+                        await tx.documentAccess.create({
+                            data: {
+                                documentId: docDetails.id,
+                                committeeId: com.id,
+                                accessType: sc.access 
+                            }
+                        });
+                    }
+                }
+            }
 
             const doc = await tx.document.create({
                 data: {
@@ -178,7 +219,7 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
              return res.status(500).json({ message: 'Failed to upload stamped file' });
         }
 
-        const uploadedUrl = uploadResponse[0].data.url;
+        const uploadedUrl = uploadResponse[0].data.ufsUrl;
 
         const newDoc = await prisma.document.create({
             data: {
@@ -210,34 +251,61 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
 
         if (!user) return res.status(401).json({ message: 'User not found' });
         
-        // Admins can see everything? Maybe. But specifically for Head/CoHead view.
-        // User asked: "accessible to only the heads/coheads... show list of documents of only that committee"
-        
-        const committees = [...user.HeadOfCommittee, ...user.CoHeadOfCommittee];
-        
-        // If Admin, let them see all? Or provide a param?
-        // Let's stick to Head logic as requested primarily.
-        
-        const committeeIds = committees.map(c => c.id);
-        
-        // Also if Doc Team, they might want to see. But this route is specifically for Operations usage (Head).
-        // create a separte route or query param?
-        
-        // If NO committee heads, return empty.
-        if (committeeIds.length === 0) return res.json([]);
+        const headCommitteeIds = user.HeadOfCommittee.map(c => c.id);
+        const coHeadCommitteeIds = user.CoHeadOfCommittee.map(c => c.id);
+        const allCommitteeIds = [...headCommitteeIds, ...coHeadCommitteeIds];
 
-        const docs = await prisma.documentDetails.findMany({
-            where: { committeeId: { in: committeeIds } },
+        if (allCommitteeIds.length === 0) return res.json({ owned: [], shared: [] });
+
+        // 1. Fetch Owned Documents
+        const ownedDocs = await prisma.documentDetails.findMany({
+            where: { committeeId: { in: allCommitteeIds } },
             include: {
-                Documents: {
-                    orderBy: { version: 'desc' },
-                },
-                committee: true
+                Documents: { orderBy: { version: 'desc' } },
+                committee: true,
+                documentAccess: { include: { committee: true } }
             },
             orderBy: { createdAt: 'desc' }
         });
 
-        return res.json(docs);
+        // 2. Fetch Shared Documents via DocumentAccess
+        // We find all access records pointing to any of the user's committees
+        const accessRecords = await prisma.documentAccess.findMany({
+            where: { committeeId: { in: allCommitteeIds } },
+            include: {
+                document: {
+                    include: {
+                        Documents: { orderBy: { version: 'desc' } },
+                        committee: true
+                    }
+                }
+            }
+        });
+
+        // 3. Filter Access Records based on Role
+        const validAccessRecords = accessRecords.filter(access => {
+            const isHead = headCommitteeIds.includes(access.committeeId);
+            const isCoHead = coHeadCommitteeIds.includes(access.committeeId);
+
+            if (isHead) return true; // Heads see everything shared with their committee
+            if (isCoHead && access.accessType === 'HEAD_AND_COHEAD') return true; // CoHeads see only shared-to-both
+            
+            return false;
+        });
+
+        // Extract documents from valid access records
+        const sharedDocs = validAccessRecords.map(a => ({
+            ...a.document,
+            sharedVia: a.committeeId // Optional: could help identifying which committee granted access
+        }));
+
+        // Remove duplicates if a doc is shared with multiple committees the user leads (though logic suggests one entry per committee)
+        // Access records are unique on [docId, committeeId], so simple mapping is fine.
+        // But if user is head of A and B, and doc is shared with A and B, it might appear twice?
+        // Let's deduplicate by ID just in case.
+        const uniqueSharedDocs = Array.from(new Map(sharedDocs.map(item => [item.id, item])).values());
+
+        return res.json({ owned: ownedDocs, shared: uniqueSharedDocs });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: 'Internal Server Error' });
@@ -256,23 +324,108 @@ export const getAllDocuments = async (req: AuthenticatedRequest, res: Response) 
         const isMember = await prisma.committeeMembership.findFirst({
             where: { userId, committeeId: docCommittee.id }
         });
-        const isHead = docCommittee.headUserId === userId || docCommittee.coHeadUserId === userId;
+        const isHead = docCommittee.headUserId === userId;
+        const isCoHead = docCommittee.coHeadUserId === userId;
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
 
-        if (!isMember && !isHead && !isAdmin) {
+        if (!isMember && !isHead && !isCoHead && !isAdmin) {
              return res.status(403).json({ message: 'Forbidden' });
         }
         
+        // Define Filter Conditions
+        // Admin or Head: See ALL (General + Classified)
+        // CoHead: See ALL General + (Own Classified OR Shared Classified)
+        // Member: See ALL General Only (No Classified)
+
+        let whereCondition: any = {};
+
+        if (isAdmin || isHead) {
+            // No filter, see everything
+            whereCondition = {};
+        } else if (isCoHead) {
+            whereCondition = {
+                OR: [
+                    { isClassified: false }, // General
+                    {
+                        AND: [
+                            { isClassified: true },
+                            {
+                                OR: [
+                                    // Own Classified (based on generatedBy in Documents)
+                                    { Documents: { some: { generatedById: userId } } },
+                                    // Shared with CoHead (AccessType HEAD_AND_COHEAD for Doc Committee)
+                                    { documentAccess: { some: { committeeId: docCommittee.id, accessType: 'HEAD_AND_COHEAD' } } }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            };
+        } else {
+            // Member
+            whereCondition = { isClassified: false };
+        }
+
         const docs = await prisma.documentDetails.findMany({
+            where: whereCondition,
             include: {
                 Documents: {
                     orderBy: { version: 'desc' },
                 },
-                committee: true
+                committee: true,
+                documentAccess: { include: { committee: true } }
             },
             orderBy: { createdAt: 'desc' }
         });
         return res.json(docs);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+export const shareDocumentWithCoHead = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { documentId } = req.body;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+        const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
+        if (!docCommittee) return res.status(500).json({ message: 'Documentation committee not found' });
+
+        // Only Head can share
+        if (docCommittee.headUserId !== userId) {
+            return res.status(403).json({ message: 'Only Documentation Head can share documents' });
+        }
+
+        const docDetails = await prisma.documentDetails.findUnique({
+            where: { id: Number(documentId) }
+        });
+
+        if (!docDetails) return res.status(404).json({ message: 'Document not found' });
+
+        
+        // Safe approach without unique constraint knowledge:
+        const existingAccess = await prisma.documentAccess.findFirst({
+            where: { documentId: Number(documentId), committeeId: docCommittee.id }
+        });
+
+        if (existingAccess) {
+            await prisma.documentAccess.update({
+                where: { id: existingAccess.id },
+                data: { accessType: 'HEAD_AND_COHEAD' }
+            });
+        } else {
+            await prisma.documentAccess.create({
+                data: {
+                    documentId: Number(documentId),
+                    committeeId: docCommittee.id,
+                    accessType: 'HEAD_AND_COHEAD'
+                }
+            });
+        }
+
+        return res.json({ message: 'Document shared with Co-Head' });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: 'Internal Server Error' });
