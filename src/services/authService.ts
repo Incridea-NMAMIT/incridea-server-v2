@@ -193,6 +193,7 @@ export async function createUserWithProfile(payload: SignupInput) {
       Organisers: true,
       Judges: true,
       PID: true,
+      HeadOfCommittee: true,
     },
   }) as Promise<
     typeof user & {
@@ -202,6 +203,7 @@ export async function createUserWithProfile(payload: SignupInput) {
       Organisers: { id: number }[]
       Judges: { id: number }[]
       PID: { pidCode: string } | null
+      HeadOfCommittee: any[]
     }
   >
 }
@@ -244,6 +246,12 @@ export async function verifyOtpForUser(email: string, otp: string) {
         select: {
           pidCode: true
         }
+      },
+      HeadOfCommittee: {
+        select: {
+          id: true,
+          name: true
+        }
       }
     },
   })
@@ -273,7 +281,7 @@ export async function verifyOtpForUser(email: string, otp: string) {
       otpHash: null,
       otpExpiresAt: null,
     },
-    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true, PID: true },
+    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true, PID: true, HeadOfCommittee: true },
   })
 
   return updated
@@ -352,6 +360,12 @@ export async function authenticateUser(email: string, password: string) {
         select: {
           pidCode: true
         }
+      },
+      HeadOfCommittee: {
+        select: {
+          id: true,
+          name: true
+        }
       }
     },
   })
@@ -370,7 +384,7 @@ export async function authenticateUser(email: string, password: string) {
 export async function getUserById(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true, PID: true },
+    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true, PID: true, HeadOfCommittee: true },
   })
   if (!user) {
     throw new AppError('User not found', 404)

@@ -89,6 +89,7 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
         committeeStatus: committee.committeeStatus,
         createdAt: user.createdAt,
         pid: user.PID?.pidCode || null,
+        HeadOfCommittee: user.HeadOfCommittee || [],
       },
     })
   } catch (error) {
@@ -142,6 +143,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         committeeStatus: committee.committeeStatus,
         createdAt: user.createdAt,
         pid: user.PID?.pidCode || null,
+        HeadOfCommittee: user.HeadOfCommittee || [],
       },
     })
   } catch (error) {
@@ -192,6 +194,7 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
         committeeStatus: committee.committeeStatus,
         createdAt: user.createdAt,
         pid: user.PID?.pidCode || null,
+        HeadOfCommittee: user.HeadOfCommittee || [],
       },
     })
   } catch (error) {
@@ -239,6 +242,7 @@ export async function me(req: AuthenticatedRequest, res: Response, next: NextFun
         committeeStatus: committee.committeeStatus,
         createdAt: user.createdAt,
         pid: user.PID?.pidCode || null,
+        HeadOfCommittee: user.HeadOfCommittee || [],
       },
     })
   } catch (error) {

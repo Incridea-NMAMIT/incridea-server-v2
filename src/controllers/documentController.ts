@@ -36,7 +36,7 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
         const file = req.file;
         const userId = req.user?.id;
         
-        const isClassified = isClassifiedStr === 'true';
+        let isClassified = isClassifiedStr === 'true';
         let sharedCommittees: { name: string, access: 'HEAD_ONLY' | 'HEAD_AND_COHEAD' }[] = [];
         if (sharedCommitteesStr) {
             try {
@@ -63,19 +63,26 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
         const isHead = (docCommittee.headUserId === userId || docCommittee.coHeadUserId === userId);
         const userRole = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
 
+        const targetCommittee = await prisma.committee.findUnique({ where: { name: committee } });
+        if (!targetCommittee) return res.status(400).json({ message: 'Target committee not found' });
+
+        const isTargetHead = (targetCommittee.headUserId === userId || targetCommittee.coHeadUserId === userId);
+
         if (!isMember && !isHead && !userRole) {
-            return res.status(403).json({ message: 'Forbidden: Only Documentation team can create documents' });
+            if (isTargetHead) {
+                // Enforce classified for Committee Heads creating documents for Doc Head visibility
+                isClassified = true;
+            } else {
+                return res.status(403).json({ message: 'Forbidden: You do not have permission to create documents for this committee' });
+            }
         }
 
         let committeeCode = CommitteeCodeMap[committee as CommitteeName];
-        if (isClassified) {
+        if (isClassified && !isTargetHead) {
             committeeCode = 'CLS';
         }
         
         if (!committeeCode && !isClassified) return res.status(400).json({ message: 'Invalid committee' });
-
-        const targetCommittee = await prisma.committee.findUnique({ where: { name: committee } });
-        if (!targetCommittee) return res.status(400).json({ message: 'Target committee not found' });
 
         const docCount = await prisma.documentDetails.count({
             where: { committeeId: targetCommittee.id }
@@ -426,6 +433,44 @@ export const shareDocumentWithCoHead = async (req: AuthenticatedRequest, res: Re
         }
 
         return res.json({ message: 'Document shared with Co-Head' });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+export const getSharedDocuments = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+        // Auth: Doc Team (Head/CoHead) or Admin
+        const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
+        if (!docCommittee) return res.status(500).json({ message: 'Documentation committee not found' });
+
+        const isHead = docCommittee.headUserId === userId;
+        const isCoHead = docCommittee.coHeadUserId === userId;
+        const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+
+        if (!isHead && !isCoHead && !isAdmin) {
+             return res.status(403).json({ message: 'Forbidden' });
+        }
+
+        const docs = await prisma.documentDetails.findMany({
+            where: {
+                isClassified: true,
+                committeeId: { not: docCommittee.id }
+            },
+            include: {
+                Documents: {
+                    orderBy: { version: 'desc' },
+                },
+                committee: true,
+                documentAccess: { include: { committee: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+        return res.json(docs);
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: 'Internal Server Error' });

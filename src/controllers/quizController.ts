@@ -100,12 +100,10 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
          // Verify team membership
-         const isMember = await prisma.teamMember.findUnique({
+         const isMember = await prisma.teamMember.findFirst({
             where: {
-                userId_teamId: {
-                    userId,
-                    teamId
-                }
+                userId,
+                teamId
             }
         })
 
@@ -177,12 +175,10 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
         if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
         // Verify team membership
-        const isMember = await prisma.teamMember.findUnique({
+        const isMember = await prisma.teamMember.findFirst({
             where: {
-                userId_teamId: {
-                    userId,
-                    teamId
-                }
+                userId,
+                teamId
             }
         })
 
@@ -220,12 +216,10 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
         if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
          // Verify team membership
-        const isMember = await prisma.teamMember.findUnique({
+        const isMember = await prisma.teamMember.findFirst({
             where: {
-                userId_teamId: {
-                    userId,
-                    teamId
-                }
+                userId,
+                teamId
             }
         })
 

@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { authenticateJWT } from '../middlewares/authMiddleware';
 import { upload } from '../config/multerConfig'; 
-import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments, shareDocumentWithCoHead } from '../controllers/documentController';
+import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments, shareDocumentWithCoHead, getSharedDocuments } from '../controllers/documentController';
 
 const router = Router();
 
@@ -16,6 +16,9 @@ router.post('/add-revision', authenticateJWT, upload.single('file'), addRevision
 
 // Get documents for my committee (Head/CoHead)
 router.get('/', getDocumentsByCommittee);
+
+// Get shared documents (Doc Head)
+router.get('/shared', getSharedDocuments);
 
 // Get all documents (Doc Team/Admin)
 router.get('/all', getAllDocuments);
