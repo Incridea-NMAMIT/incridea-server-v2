@@ -464,11 +464,15 @@ export const getSharedDocuments = async (req: AuthenticatedRequest, res: Respons
             include: {
                 Documents: {
                     orderBy: { version: 'desc' },
+                    take: 1
                 },
                 committee: true,
                 documentAccess: { include: { committee: true } }
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: [
+                { committee: { name: 'asc' } },
+                { createdAt: 'desc' }
+            ]
         });
         return res.json(docs);
     } catch (error) {

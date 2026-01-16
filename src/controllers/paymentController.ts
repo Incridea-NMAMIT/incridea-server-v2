@@ -1,8 +1,9 @@
+
 import type { Request, Response } from 'express'
 import crypto from 'crypto'
 import prisma from '../prisma/client'
 import { RAZORPAY_WEBHOOK_SECRET, razorpay } from '../services/razorpay'
-import { Status, PaymentType, AccommodationBookingStatus } from '@prisma/client'
+import { Status, PaymentType, AccommodationBookingStatus, PaymentPurpose, PaymentStatus, PaymentMethod } from '@prisma/client'
 import { listVariables } from '../services/adminService'
 import { generatePID } from '../services/pidService'
 
@@ -91,11 +92,12 @@ export async function initiatePayment(req: Request, res: Response) {
         data: {
             orderId: order.id,
             amount: amount,
+            collectedAmount: amountInRupees,
             status: Status.PENDING,
             type: PaymentType.FEST_REGISTRATION,
             userId,
-            paymentData: order as any // Storing the initial order data
-        }
+            paymentDataJson: order as any // Storing the initial order data
+        } as any // CASTING AS ANY TO AVOID TYPE ISSUES
     })
 
     return res.status(200).json({
@@ -148,9 +150,10 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
     // Log the event for debugging (optional, consider removing in production if too verbose)
     console.log('Razorpay Webhook Event:', event.event)
 
-    if (event.event === 'order.paid' || event.event === 'payment.captured') {
+    if (event.event === 'order.paid' || event.event === 'payment.captured' || event.event === 'payment.failed') {
       const paymentEntity = event.payload.payment.entity
       const orderId = paymentEntity.order_id
+      const isSuccess = event.event !== 'payment.failed';
       
       // 1. Check for Fest Registration Payment
       const paymentOrder = await prisma.paymentOrder.findUnique({
@@ -158,23 +161,43 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
       })
 
       if (paymentOrder) {
-          await prisma.paymentOrder.update({
-            where: { orderId },
-            data: {
-              status: Status.SUCCESS,
-              paymentData: paymentEntity,
-            },
-          })
-          console.log(`Payment successful for order ${orderId}, User ID: ${paymentOrder.userId}`)
+          // Prepare Payment Record Data
+          const paymentData = createPaymentDataFromEntity(paymentEntity, paymentOrder);
 
-          // Generate PID if it's a FEST_REGISTRATION
-          if (paymentOrder.type === PaymentType.FEST_REGISTRATION) {
-              try {
-                  await generatePID(paymentOrder.userId, paymentOrder.orderId)
-                  console.log(`PID generated for User ID: ${paymentOrder.userId}`)
-              } catch (pidError) {
-                  console.error('Error generating PID:', pidError)
-              }
+          // Update PaymentOrder and Create Payment
+          await prisma.$transaction(async (tx) => {
+             // Create Payment record
+             // Check if already exists to avoid unique constraint error
+             const existing = await tx.payment.findUnique({ where: { gatewayPaymentId: paymentEntity.id }});
+             if (!existing) {
+                await tx.payment.create({
+                    data: paymentData as any
+                });
+             }
+
+             await tx.paymentOrder.update({
+                where: { orderId },
+                data: {
+                  status: isSuccess ? Status.SUCCESS : Status.FAILED,
+                  paymentDataJson: paymentEntity,
+                } as any, // CASTING AS ANY
+              })
+          });
+          
+          if (isSuccess) {
+            console.log(`Payment successful for order ${orderId}, User ID: ${paymentOrder.userId}`)
+
+            // Generate PID if it's a FEST_REGISTRATION
+            if (paymentOrder.type === PaymentType.FEST_REGISTRATION) {
+                try {
+                    await generatePID(paymentOrder.userId, paymentOrder.orderId)
+                    console.log(`PID generated for User ID: ${paymentOrder.userId}`)
+                } catch (pidError) {
+                    console.error('Error generating PID:', pidError)
+                }
+            }
+          } else {
+             console.log(`Payment failed for order ${orderId}, User ID: ${paymentOrder.userId}`)
           }
           return res.status(200).json({ status: 'ok' })
       }
@@ -188,64 +211,33 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
           await prisma.accommodationPayment.update({
               where: { orderId },
               data: {
-                  status: Status.SUCCESS,
+                  status: isSuccess ? Status.SUCCESS : Status.FAILED,
                   paymentData: paymentEntity
               }
           })
           
-          // Confirm all linked bookings
-          await prisma.accommodationBooking.updateMany({
-              where: { paymentId: accPayment.id },
-              data: { status: AccommodationBookingStatus.CONFIRMED }
-          })
+          if (isSuccess) {
+              // Confirm all linked bookings
+              await prisma.accommodationBooking.updateMany({
+                  where: { paymentId: accPayment.id },
+                  data: { status: AccommodationBookingStatus.CONFIRMED }
+              })
+              console.log(`Accommodation Payment successful for order ${orderId}`)
+          } else {
+             // Cancel linked bookings
+              await prisma.accommodationBooking.updateMany({
+                where: { paymentId: accPayment.id },
+                data: { status: AccommodationBookingStatus.CANCELLED }
+              })
+             console.log(`Accommodation Payment failed for order ${orderId}`)
+          }
 
-          console.log(`Accommodation Payment successful for order ${orderId}`)
           return res.status(200).json({ status: 'ok' })
       }
 
       console.error(`Order not found for orderId: ${orderId}`)
 
-    } else if (event.event === 'payment.failed') {
-      const paymentEntity = event.payload.payment.entity
-      const orderId = paymentEntity.order_id
-      
-      const paymentOrder = await prisma.paymentOrder.findUnique({ where: { orderId } })
-      
-      if (paymentOrder) {
-        await prisma.paymentOrder.update({
-            where: { orderId },
-            data: {
-            status: Status.FAILED,
-            paymentData: paymentEntity,
-            },
-        })
-        console.log(`Payment failed for order ${orderId}, User ID: ${paymentOrder.userId}`)
-        return res.status(200).json({ status: 'ok' })
-      }
-
-      const accPayment = await prisma.accommodationPayment.findUnique({ where: { orderId } })
-      
-      if (accPayment) {
-          await prisma.accommodationPayment.update({
-              where: { orderId },
-              data: {
-                  status: Status.FAILED,
-                  paymentData: paymentEntity
-              }
-          })
-          
-          // Cancel linked bookings
-          await prisma.accommodationBooking.updateMany({
-              where: { paymentId: accPayment.id },
-              data: { status: AccommodationBookingStatus.CANCELLED }
-          })
-          
-          console.log(`Accommodation Payment failed for order ${orderId}`)
-          return res.status(200).json({ status: 'ok' })
-      }
-
-      console.error(`Order not found for orderId: ${orderId}`)
-    }
+    } 
 
     // Handle other events if necessary
 
@@ -254,4 +246,68 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
     console.error('Razorpay Webhook Error:', error)
     return res.status(500).json({ message: 'Internal Server Error' })
   }
+}
+
+function createPaymentDataFromEntity(data: any, order: any): any {
+    // Map JSON to Payment fields
+    // Determine PaymentPurpose
+    let purpose: any = PaymentPurpose.FEST_REGISTRATION; // Default based on user sample
+    if (data.notes && data.notes.type) {
+        if (data.notes.type === 'FEST_REGISTRATION') purpose = PaymentPurpose.FEST_REGISTRATION;
+        else if (data.notes.type === 'EVENT_REGISTRATION') purpose = PaymentPurpose.EVENT_REGISTRATION;
+        else if (data.notes.type === 'ACCOMMODATION' || data.notes.type === 'ACC_REGISTRATION') purpose = PaymentPurpose.ACCOMMODATION;
+        else if (data.notes.type === 'MERCH') purpose = PaymentPurpose.MERCH;
+    } else if (order.type === 'FEST_REGISTRATION') {
+       purpose = PaymentPurpose.FEST_REGISTRATION;
+    }
+
+    // Map Status
+    let status: any = PaymentStatus.CREATED;
+    const s = data.status;
+    if (s === 'created') status = PaymentStatus.CREATED;
+    else if (s === 'authorized') status = PaymentStatus.AUTHORIZED;
+    else if (s === 'captured') status = PaymentStatus.CAPTURED;
+    else if (s === 'failed') status = PaymentStatus.FAILED;
+    else if (s === 'refunded') status = PaymentStatus.REFUNDED;
+
+    // Map Method
+    let method: any = PaymentMethod.UPI; // Default or fallback
+    const m = data.method;
+    if (m === 'card') method = PaymentMethod.CARD;
+    else if (m === 'netbanking') method = PaymentMethod.NETBANKING;
+    else if (m === 'upi') method = PaymentMethod.UPI;
+    else if (m === 'wallet') method = PaymentMethod.WALLET;
+    else if (m === 'emi') method = PaymentMethod.EMI;
+
+    return {
+        gatewayPaymentId: data.id,
+        gatewayOrderId: data.order_id,
+        entity: data.entity,
+        amount: typeof data.amount === 'string' ? parseInt(data.amount) : (data.amount || 0),
+        fee: typeof data.fee === 'string' ? parseInt(data.fee) : data.fee,
+        tax: typeof data.tax === 'string' ? parseInt(data.tax) : data.tax,
+        amountRefunded: typeof data.amount_refunded === 'string' ? parseInt(data.amount_refunded) : (data.amount_refunded || 0),
+        currency: data.currency || 'INR',
+        status: status,
+        captured: data.captured || false,
+        refundStatus: data.refund_status,
+        international: data.international || false,
+        method: method,
+        bankCode: data.bank,
+        wallet: data.wallet,
+        vpa: data.vpa,
+        cardId: data.card_id,
+        bankTransactionId: data.acquirer_data?.bank_transaction_id,
+        email: data.email,
+        contact: data.contact,
+        purpose: purpose,
+        registrationId: data.notes?.registrationId,
+        userId: data.notes?.userId,
+        errorCode: data.error_code,
+        errorReason: data.error_reason,
+        errorSource: data.error_source,
+        errorStep: data.error_step,
+        errorDescription: data.error_description,
+        createdAt: data.created_at ? new Date(data.created_at * 1000) : new Date(),
+    };
 }

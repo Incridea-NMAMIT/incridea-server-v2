@@ -275,12 +275,14 @@ model Round {
 }
 
 model PaymentOrder {
-  id          String      @id @default(cuid())
-  orderId     String      @unique
-  amount      Int         @default(250)
-  paymentData Json?
-  status      Status      @default(PENDING)
-  type        PaymentType @default(FEST_REGISTRATION)
+  id              String      @id @default(cuid())
+  orderId         String      @unique
+  amount          Int         @default(0)
+  collectedAmount Int         @default(0)
+  paymentDataJson Json?
+  paymentData     Payment?
+  status          Status      @default(PENDING)
+  type            PaymentType @default(FEST_REGISTRATION)
 
   userId Int
   User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -869,4 +871,85 @@ model AccommodationRequests {
   value     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  NETBANKING
+  UPI
+  WALLET
+  EMI
+}
+
+enum PaymentPurpose {
+  FEST_REGISTRATION
+  EVENT_REGISTRATION
+  MERCH
+  ACCOMMODATION
+}
+
+model Payment {
+  id String @id @default(cuid())
+
+  // Gateway identifiers
+  gatewayPaymentId String  @unique
+  gatewayOrderId   String? @unique
+  entity           String?
+
+  // Amounts (paise)
+  amount         Int
+  fee            Int?
+  tax            Int?
+  amountRefunded Int    @default(0)
+  currency       String @default("INR")
+
+  // Status
+  status        PaymentStatus
+  captured      Boolean       @default(false)
+  refundStatus  String?
+  international Boolean       @default(false)
+
+  // Method
+  method   PaymentMethod
+  bankCode String?
+  wallet   String?
+  vpa      String?
+  cardId   String?
+
+  // Acquirer
+  bankTransactionId String?
+
+  // User info
+  email   String?
+  contact String?
+
+  // Purpose mapping
+  purpose        PaymentPurpose
+  registrationId String?
+  userId         String?
+
+  // Errors
+  errorCode        String?
+  errorReason      String?
+  errorSource      String?
+  errorStep        String?
+  errorDescription String?
+
+  // Timestamps
+  createdAt DateTime
+  updatedAt DateTime @updatedAt
+
+  PaymentOrder PaymentOrder? @relation(fields: [gatewayOrderId], references: [orderId])
+
+  @@index([userId])
+  @@index([registrationId])
+  @@index([gatewayOrderId])
 }

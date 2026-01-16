@@ -1,4 +1,4 @@
-import { Category } from '@prisma/client';
+import { Category, Status } from '@prisma/client';
 import prisma from '../prisma/client';
 
 /**
@@ -10,6 +10,19 @@ import prisma from '../prisma/client';
  */
 export async function generatePID(userId: number, paymentOrderId: string) {
   return await prisma.$transaction(async (tx) => {
+    // 0. Verify Payment Order Status
+    const paymentOrder = await tx.paymentOrder.findUnique({
+      where: { orderId: paymentOrderId },
+    });
+
+    if (!paymentOrder) {
+      throw new Error('Payment Order not found');
+    }
+
+    if (paymentOrder.status !== Status.SUCCESS) {
+      throw new Error('Cannot generate PID: Payment is not successful');
+    }
+
     // 1. Check if user already has a PID
     const existingPID = await tx.pID.findUnique({
       where: { userId },
