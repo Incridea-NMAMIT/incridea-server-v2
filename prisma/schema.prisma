@@ -283,7 +283,7 @@ model PaymentOrder {
   paymentData     Payment?
   status          Status      @default(PENDING)
   type            PaymentType @default(FEST_REGISTRATION)
-
+  receipt           String?
   userId Int
   User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -850,7 +850,7 @@ model AccommodationBooking {
   checkIn           DateTime
   checkOut          DateTime
   idCard            String?
-  invoice           String?
+  receipt           String?
   status            AccommodationBookingStatus @default(PENDING)
 
   userId Int
