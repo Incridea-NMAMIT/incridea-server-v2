@@ -12,6 +12,9 @@ import {
   getUserCommitteeSnapshot,
 } from '../services/authService'
 import { razorpay } from '../services/razorpay'
+import { getIO } from '../socket'
+import jwt from 'jsonwebtoken'
+import { env } from '../utils/env'
 import { PaymentType, Status } from '@prisma/client'
 import prisma from '../prisma/client'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
@@ -112,6 +115,9 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       userId: user.id,
     })
 
+    const io = getIO()
+    io.emit('auth:login', { userId: user.id })
+
     res.cookie('token', token, {
        httpOnly: false,
        secure: process.env.NODE_ENV === 'production',
@@ -162,6 +168,9 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
       message: `OTP verified for ${email}`,
       userId: user.id,
     })
+
+    const io = getIO()
+    io.emit('auth:login', { userId: user.id })
 
     res.cookie('token', token, {
         httpOnly: false,
@@ -311,8 +320,25 @@ export async function verifyMasterKey(req: Request, res: Response, next: NextFun
   }
 }
 
-export async function logout(_req: Request, res: Response, next: NextFunction) {
+export async function logout(req: Request, res: Response, next: NextFunction) {
   try {
+    const io = getIO()
+    
+    // Attempt to extract userId from token to emit meaningful logout event
+    const token = req.cookies?.token
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, env.jwtSecret) as jwt.JwtPayload
+            const userId = decoded.sub ? parseInt(decoded.sub, 10) : null
+            if (userId) {
+                io.emit('auth:logout', { userId })
+            }
+        } catch (err) {
+            console.error('Logout: Failed to verify token for event emission', err)
+            // Continue to clear cookie regardless
+        }
+    }
+
     res.clearCookie('token', {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',

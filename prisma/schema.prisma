@@ -283,9 +283,9 @@ model PaymentOrder {
   paymentData     Payment?
   status          Status      @default(PENDING)
   type            PaymentType @default(FEST_REGISTRATION)
-  receipt           String?
-  userId Int
-  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  receipt         String?
+  userId          Int
+  User            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

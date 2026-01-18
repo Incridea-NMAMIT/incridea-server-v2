@@ -7,6 +7,7 @@ import { Status, PaymentType, AccommodationBookingStatus, PaymentPurpose, Paymen
 import { listVariables } from '../services/adminService'
 import { generatePID } from '../services/pidService'
 import { generateReceipt } from '../utils/receiptGenerator'
+import { setPaymentStep, getPaymentStep, clearPaymentStep } from '../utils/paymentStatusStore'
 
 export async function initiatePayment(req: Request, res: Response) {
   try {
@@ -294,11 +295,16 @@ export async function verifyPayment(req: Request, res: Response) {
 
     if (payment.status === 'captured' || payment.status === 'authorized') {
         const paymentData = createPaymentDataFromEntity(payment, paymentOrder)
-         const pid = await processSuccessfulPayment(paymentOrder, payment, paymentData)
+         
+         // Fire and forget processing
+         processSuccessfulPayment(paymentOrder, payment, paymentData).catch(err => {
+             console.error('Async payment processing failed:', err)
+         })
+
          return res.status(200).json({ 
-             status: 'success', 
-             message: 'Payment verified successfully',
-             pid
+             status: 'processing', 
+             message: 'Payment verification in progress',
+             pid: null
          })
     } else {
          return res.status(400).json({ status: 'failure', message: 'Payment not captured' })
@@ -338,10 +344,25 @@ export async function getMyPaymentStatus(req: Request, res: Response) {
         // We return success ONLY if we have PID AND Receipt (if success)
         // If payment is success but no PID/Receipt, we might be processing.
         
+        const currentStep = getPaymentStep(paymentOrder.orderId)
+        
+        let status = 'pending';
+        if (paymentOrder.status === Status.SUCCESS) {
+            // Only return success if we have both PID and Receipt (or if logic dictates)
+            // If we are still generating them, we should say 'processing' so frontend shows steps
+            if (pidEntry && paymentOrder.receipt) {
+                status = 'success';
+            } else {
+                status = 'processing';
+            }
+        }
+        else if (paymentOrder.status === Status.FAILED) status = 'failed';
+
         return res.status(200).json({
-            status: paymentOrder.status === Status.SUCCESS ? 'success' : 'pending',
+            status: status,
             pid: pidEntry?.pidCode,
-            receipt: paymentOrder.receipt
+            receipt: paymentOrder.receipt,
+            processingStep: currentStep
         })
 
     } catch (error) {
@@ -391,9 +412,16 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
             let attempts = 0;
             const maxAttempts = 3;
 
+            setPaymentStep(paymentOrder.orderId, 'GENERATING_RECEIPT')
+
             while (attempts < maxAttempts && !receiptUrl) {
                 attempts++;
                 console.log(`Generating receipt for Order ID: ${paymentOrder.orderId} (Attempt ${attempts}/${maxAttempts})`);
+                
+                if (attempts > 1) {
+                     setPaymentStep(paymentOrder.orderId, `GENERATING_RECEIPT_RETRY_${attempts}`)
+                }
+
                 try {
                     receiptUrl = await generateReceipt(paymentOrder as any, user, paymentData);
                     if (receiptUrl) {
@@ -414,20 +442,31 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
 
             if (receiptUrl) {
                 // 2. Save Receipt URL
-                const updatedOrder = await prisma.paymentOrder.update({
+                await prisma.paymentOrder.update({
                     where: { orderId: paymentOrder.orderId },
-                    data: { receipt: receiptUrl }
+                    data: { 
+                        receipt: receiptUrl
+                    }
                 })
-                console.log(`Receipt saved to DB: ${updatedOrder.receipt}`)
+                setPaymentStep(paymentOrder.orderId, 'SAVING_RECEIPT')
+                console.log(`Receipt saved to DB`)
             } else {
-                console.error(`Failed to generate receipt after ${maxAttempts} attempts. Proceeding to PID generation without receipt.`);
+                console.error(`Failed to generate receipt after ${maxAttempts} attempts.`);
             }
 
             // 3. Generate PID
             console.log(`Generating PID for User ID: ${paymentOrder.userId}...`);
+            
+            setPaymentStep(paymentOrder.orderId, 'GENERATING_PID')
+
             const pidContext = await generatePID(paymentOrder.userId, paymentOrder.orderId)
             console.log(`PID generated successfully: ${pidContext.pidCode}`)
             
+            setPaymentStep(paymentOrder.orderId, 'COMPLETED')
+            
+            // Optional: Schedule cleanup 
+            setTimeout(() => clearPaymentStep(paymentOrder.orderId), 60000) // Clear after 1 minute
+
             return pidContext.pidCode
 
         } catch (error) {

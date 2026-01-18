@@ -11,6 +11,15 @@ export const uploadRouter = {
       userId: null,
     }))
     .onUploadComplete(async ({ file }) => ({ fileUrl: file.ufsUrl })),
+
+  alumniIdProof: f({
+    image: { maxFileSize: '4MB' },
+    pdf: { maxFileSize: '4MB' },
+  })
+    .middleware(() => ({
+      userId: null,
+    }))
+    .onUploadComplete(async ({ file }) => ({ fileUrl: file.ufsUrl })),
   
   pdfUploader: f({
     pdf: { maxFileSize: '128MB', maxFileCount: 1 }
