@@ -8,6 +8,7 @@ import type {
   ApproveMemberInput,
   AssignCoHeadInput,
   AssignHeadInput,
+  RemoveMemberInput,
 } from '../schemas/committeeSchemas'
 
 const userSummarySelect = { id: true, name: true, email: true, phoneNumber: true }
@@ -407,6 +408,91 @@ export async function searchCommitteeUsers(req: AuthenticatedRequest, res: Respo
     })
 
     return res.status(200).json({ users })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function removeCommitteeMember(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ message: 'Unauthorized' })
+    }
+
+    const payload = req.body as RemoveMemberInput
+
+    const membership = await prisma.committeeMembership.findUnique({
+      where: { id: payload.membershipId },
+      include: { Committee: true },
+    })
+
+    if (!membership) {
+      return res.status(404).json({ message: 'Membership not found' })
+    }
+
+    if (membership.Committee.headUserId !== req.user.id) {
+      return res.status(403).json({ message: 'Only the committee head can remove members' })
+    }
+
+    await prisma.committeeMembership.delete({
+      where: { id: membership.id },
+    })
+
+
+    return res.status(200).json({
+      message: 'Member removed',
+    })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function getCommitteeMembers(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ message: 'Unauthorized' })
+    }
+
+    const { committeeId } = req.params
+    if (!committeeId) {
+      return res.status(400).json({ message: 'Committee ID is required' })
+    }
+
+    // Check for DOCUMENTATION role
+    const roles = await getUserRoles(req.user.id)
+    const isDocumentation = roles.includes('DOCUMENTATION')
+    const isAdmin = roles.includes('ADMIN')
+
+    if (!isDocumentation && !isAdmin) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
+
+    const members = await prisma.committeeMembership.findMany({
+      where: {
+        committeeId: Number(committeeId),
+        status: CommitteeMembershipStatus.APPROVED,
+      },
+      include: {
+        User: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phoneNumber: true,
+          },
+        },
+      },
+      orderBy: { User: { name: 'asc' } },
+    })
+
+    const formattedMembers = members.map((m) => ({
+      userId: m.userId,
+      name: m.User.name,
+      email: m.User.email,
+      phoneNumber: m.User.phoneNumber,
+    }))
+
+    return res.status(200).json({ members: formattedMembers })
   } catch (error) {
     return next(error)
   }

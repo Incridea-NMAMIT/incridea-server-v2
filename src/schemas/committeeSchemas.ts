@@ -41,7 +41,12 @@ export const approveMemberSchema = z.object({
   membershipId: z.number().int().positive(),
 })
 
+export const removeMemberSchema = z.object({
+  membershipId: z.number().int().positive(),
+})
+
 export type ApplyCommitteeInput = z.infer<typeof applyCommitteeSchema>
 export type AssignHeadInput = z.infer<typeof assignHeadSchema>
 export type AssignCoHeadInput = z.infer<typeof assignCoHeadSchema>
 export type ApproveMemberInput = z.infer<typeof approveMemberSchema>
+export type RemoveMemberInput = z.infer<typeof removeMemberSchema>

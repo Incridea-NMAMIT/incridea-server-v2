@@ -9,12 +9,15 @@ import {
   approveCommitteeMember,
   getCommitteeState,
   searchCommitteeUsers,
+  removeCommitteeMember,
+  getCommitteeMembers,
 } from '../controllers/committeeController'
 import {
   applyCommitteeSchema,
   assignCoHeadSchema,
   assignHeadSchema,
   approveMemberSchema,
+  removeMemberSchema,
 } from '../schemas/committeeSchemas'
 
 const router = Router()
@@ -27,5 +30,7 @@ router.post('/apply', validateRequest(applyCommitteeSchema), applyToCommittee)
 router.post('/assign-head', requireAdmin, validateRequest(assignHeadSchema), assignCommitteeHead)
 router.post('/assign-cohead', validateRequest(assignCoHeadSchema), assignCommitteeCoHead)
 router.post('/approve-member', validateRequest(approveMemberSchema), approveCommitteeMember)
+router.post('/remove-member', validateRequest(removeMemberSchema), removeCommitteeMember)
+router.get('/:committeeId/members', getCommitteeMembers)
 
 export default router
