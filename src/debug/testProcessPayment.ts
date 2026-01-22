@@ -134,12 +134,9 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
             }
 
             if (receiptUrl) {
-                // 2. Save Receipt URL
-                const updatedOrder = await prisma.paymentOrder.update({
-                    where: { orderId: paymentOrder.orderId },
-                    data: { receipt: receiptUrl }
-                })
-                console.log(`Receipt saved to DB: ${updatedOrder.receipt}`)
+                // Receipt generation handles the DB update internally now
+                console.log(`Receipt URL obtained: ${receiptUrl}`);
+                // We don't need to manually update DB here anymore as logic moved to generator
             } else {
                 console.error(`Failed to generate receipt after ${maxAttempts} attempts. Proceeding to PID generation without receipt.`);
             }

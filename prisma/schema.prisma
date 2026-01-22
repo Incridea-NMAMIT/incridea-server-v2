@@ -207,7 +207,7 @@ model Event {
   branchId    Int?
   Branch      Branch?       @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
-  day DayType?
+  day DayType[] @default([Day1])
 
   Teams Team[]
 

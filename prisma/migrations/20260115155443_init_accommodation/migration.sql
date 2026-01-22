@@ -154,7 +154,7 @@ CREATE TABLE "AccommodationPayment" (
     "amount" INTEGER NOT NULL DEFAULT 200,
     "paymentData" JSONB,
     "status" "Status" NOT NULL DEFAULT 'PENDING',
-    "type" "PaymentType" NOT NULL DEFAULT 'ACC_REGISTRATION',
+    "type" "PaymentType" NOT NULL,
     "userId" INTEGER NOT NULL,
     "pidId" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

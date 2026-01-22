@@ -28,6 +28,19 @@ export const signupSchema = z
     path: ['confirmPassword'],
   })
   .superRefine((data, ctx) => {
+    if (data.selection === 'NMAMIT') {
+      const allowedDomains = ['@nmamit.in', '@nitte.edu.in', '@student.nitte.edu.in', '@nmit.ac.in']
+      const isValidDomain = allowedDomains.some((domain) => data.email.endsWith(domain))
+      
+      if (!isValidDomain) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Please use your college email ending with @nmamit.in, @nitte.edu.in, @student.nitte.edu.in or @nmit.ac.in',
+          path: ['email'],
+        })
+      }
+    }
+
     if (data.selection === 'OTHER') {
       if (!data.collegeId || data.collegeId === 1) {
         ctx.addIssue({

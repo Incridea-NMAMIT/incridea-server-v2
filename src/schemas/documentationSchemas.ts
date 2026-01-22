@@ -15,6 +15,7 @@ export const createDocumentationEventSchema = z
         isBranch: z.boolean().optional(),
         branchId: z.number().int().positive().nullable().optional(),
         image: z.string().optional(),
+        day: z.array(z.enum(['Day1', 'Day2', 'Day3', 'Day4'])).optional(),
     })
     .refine(
         (data) => {
@@ -43,6 +44,7 @@ export const updateDocumentationEventSchema = z
         isBranch: z.boolean().optional(),
         branchId: z.number().int().positive().nullable().optional(),
         image: z.string().optional(),
+        day: z.array(z.enum(['Day1', 'Day2', 'Day3', 'Day4'])).optional(),
         published: z.boolean().optional(),
     })
     .refine(
