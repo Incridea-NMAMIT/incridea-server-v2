@@ -102,35 +102,44 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
     }> = []
 
     if (managedCommitteeIds.length > 0) {
-      const allMembers = await prisma.committeeMembership.findMany({
-        where: { committeeId: { in: managedCommitteeIds } },
-        include: { User: { select: userSummarySelect } },
-        orderBy: [{ status: 'asc' }, { createdAt: 'asc' }],
-      })
+      const [pending, approved] = await Promise.all([
+        prisma.committeeMembership.findMany({
+          where: {
+            committeeId: { in: managedCommitteeIds },
+            status: CommitteeMembershipStatus.PENDING,
+          },
+          include: { User: { select: userSummarySelect } },
+          orderBy: [{ createdAt: 'asc' }],
+        }),
+        prisma.committeeMembership.findMany({
+          where: {
+            committeeId: { in: managedCommitteeIds },
+            status: CommitteeMembershipStatus.APPROVED,
+          },
+          include: { User: { select: userSummarySelect } },
+          orderBy: [{ createdAt: 'asc' }],
+        }),
+      ])
 
-      pendingApplicants = allMembers
-        .filter((m) => m.status === CommitteeMembershipStatus.PENDING)
-        .map((m) => ({
-          membershipId: m.id,
-          userId: m.userId,
-          committeeId: m.committeeId,
-          name: m.User?.name ?? null,
-          email: m.User?.email ?? '',
-          phoneNumber: m.User?.phoneNumber ?? '',
-          status: m.status,
-        }))
+      pendingApplicants = pending.map((m) => ({
+        membershipId: m.id,
+        userId: m.userId,
+        committeeId: m.committeeId,
+        name: m.User?.name ?? null,
+        email: m.User?.email ?? '',
+        phoneNumber: m.User?.phoneNumber ?? '',
+        status: m.status,
+      }))
 
-      approvedMembers = allMembers
-        .filter((m) => m.status === CommitteeMembershipStatus.APPROVED)
-        .map((m) => ({
-          membershipId: m.id,
-          userId: m.userId,
-          committeeId: m.committeeId,
-          name: m.User?.name ?? null,
-          email: m.User?.email ?? '',
-          phoneNumber: m.User?.phoneNumber ?? '',
-          status: m.status,
-        }))
+      approvedMembers = approved.map((m) => ({
+        membershipId: m.id,
+        userId: m.userId,
+        committeeId: m.committeeId,
+        name: m.User?.name ?? null,
+        email: m.User?.email ?? '',
+        phoneNumber: m.User?.phoneNumber ?? '',
+        status: m.status,
+      }))
     }
 
     return res.status(200).json({

@@ -806,7 +806,7 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
       })
 
       // 2. Handle Questions
-      // First, get all existing question IDs
+      // Fetch existing question IDs with a single query to avoid repeated scans
       const existingQuestions = await tx.question.findMany({
         where: { quizId },
         select: { id: true },
