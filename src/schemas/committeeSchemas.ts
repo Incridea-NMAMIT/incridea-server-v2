@@ -25,6 +25,7 @@ const COMMITTEE_VALUES = [
 export const applyCommitteeSchema = z.object({
   committee: z.enum(COMMITTEE_VALUES),
   name: z.string().trim().min(3).optional(),
+  photo: z.string().url().optional(),
 })
 
 export const assignHeadSchema = z.object({

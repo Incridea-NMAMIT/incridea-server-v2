@@ -208,6 +208,7 @@ export async function applyToCommittee(req: AuthenticatedRequest, res: Response,
         userId,
         committeeId: committee.id,
         status: CommitteeMembershipStatus.PENDING,
+        photo: payload.photo,
       },
       include: { Committee: true },
     })
