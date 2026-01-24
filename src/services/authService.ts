@@ -131,6 +131,20 @@ export async function createUserWithProfile(payload: SignupInput) {
     otpExpiresAt,
   }
 
+  if (payload.verificationToken) {
+    // Verify the token
+    try {
+        const decoded = jwt.verify(payload.verificationToken, env.jwtSecret) as jwt.JwtPayload
+        if (decoded.purpose !== 'google-verification' || decoded.email !== email) {
+            throw new AppError('Invalid verification token', 400)
+        }
+        // Skip OTP
+        data.isVerified = true
+    } catch (e) {
+        throw new AppError('Invalid or expired verification token', 400)
+    }
+  }
+
   const user = await prisma.user.create({
         data: {
           ...data,
@@ -154,53 +168,33 @@ export async function createUserWithProfile(payload: SignupInput) {
   }
 
   if (payload.accommodation) {
-    // const holdingHotel = await ensureHoldingHotel()
-    // const gender: Gender = payload.gender as Gender
-    // const checkIn = parseDateOrNull(payload.accommodation.checkIn ?? null)
-    // const checkOut = parseDateOrNull(payload.accommodation.checkOut ?? null)
-
-    // await prisma.userInHotel.upsert({
-    //   where: { userId: user.id },
-    //   update: {
-    //     IdCard: payload.accommodation.idProofUrl ?? null,
-    //     gender,
-    //     checkIn,
-    //     checkOut,
-    //     hotelId: holdingHotel.id,
-    //   },
-    //   create: {
-    //     userId: user.id,
-    //     IdCard: payload.accommodation.idProofUrl ?? null,
-    //     gender,
-    //     checkIn,
-    //     checkOut,
-    //     hotelId: holdingHotel.id,
-    //   },
-    // })
+    // Accommodation logic commented out in original
   }
 
-  const emailHtml = getUtilityEmailHtml(`
-    <div style="text-align: center;">
-      <h1 style="color: #ffffff; font-size: 24px; margin-bottom: 16px;">Welcome to Incridea! </h1>
-      <p style="color: #cbd5e1; margin-bottom: 24px; font-size: 16px;">
-        We're super excited to have you on board! To get started, please verify your email address.
-      </p>
-      <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 24px; display: inline-block; margin: 16px 0;">
-        <p style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Verification Code</p>
-        <span style="font-family: 'Courier New', monospace; font-size: 32px; letter-spacing: 4px; font-weight: bold; color: #ffffff;">${otpCode}</span>
-      </div>
-      <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
-        This code expires in 10 minutes.
-      </p>
-    </div>
-  `)
-
-  await sendEmail(
-    user.email,
-    'Verify your email ',
-    `Your verification code is ${otpCode}. It expires in 10 minutes.`,
-    emailHtml,
-  )
+  if (!data.isVerified) {
+      const emailHtml = getUtilityEmailHtml(`
+        <div style="text-align: center;">
+          <h1 style="color: #ffffff; font-size: 24px; margin-bottom: 16px;">Welcome to Incridea! </h1>
+          <p style="color: #cbd5e1; margin-bottom: 24px; font-size: 16px;">
+            We're super excited to have you on board! To get started, please verify your email address.
+          </p>
+          <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 24px; display: inline-block; margin: 16px 0;">
+            <p style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Verification Code</p>
+            <span style="font-family: 'Courier New', monospace; font-size: 32px; letter-spacing: 4px; font-weight: bold; color: #ffffff;">${otpCode}</span>
+          </div>
+          <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+            This code expires in 10 minutes.
+          </p>
+        </div>
+      `)
+    
+      await sendEmail(
+        user.email,
+        'Verify your email ',
+        `Your verification code is ${otpCode}. It expires in 10 minutes.`,
+        emailHtml,
+      )
+  }
 
   return prisma.user.findUnique({
     where: { id: user.id },
@@ -588,4 +582,163 @@ export async function getUserCommitteeSnapshot(userId: number): Promise<{
   }
 
   return { committeeRole: null, committeeName: null, committeeStatus: null }
+}
+
+// Google Auth Helpers
+function validateGoogleParams() {
+  if (!env.google.clientId || !env.google.clientSecret || !env.google.redirectUri) {
+      throw new AppError('Google Auth not configured', 500)
+  }
+  return {
+      clientId: env.google.clientId,
+      clientSecret: env.google.clientSecret,
+      redirectUri: env.google.redirectUri
+  }
+}
+
+export function getGoogleUrl(email?: string) {
+    const { clientId, redirectUri } = validateGoogleParams()
+    const rootUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
+    const options: Record<string, string> = {
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        access_type: 'offline',
+        response_type: 'code',
+        prompt: 'consent',
+        scope: [
+            'https://www.googleapis.com/auth/userinfo.profile',
+            'https://www.googleapis.com/auth/userinfo.email',
+        ].join(' '),
+    }
+
+    if (email) {
+        options.login_hint = email
+    }
+
+    const qs = new URLSearchParams(options)
+    return `${rootUrl}?${qs.toString()}`
+}
+
+async function getGoogleTokens(code: string) {
+    const { clientId, clientSecret, redirectUri } = validateGoogleParams()
+    const url = 'https://oauth2.googleapis.com/token'
+    const values = {
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code'
+    }
+
+    try {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams(values).toString()
+        })
+        
+        if (!res.ok) {
+             const error = await res.text()
+             console.error('Google Token Error:', error)
+        }
+        
+        const data = await res.json() as { access_token: string; id_token: string }
+        return data
+    } catch (error) {
+        console.error('Google Token Exchange Failed:', error)
+        throw new AppError('Google Token Exchange', 400)
+    }
+}
+
+async function getGoogleUser(id_token: string, access_token: string) {
+    try {
+        const res = await fetch(`https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${access_token}`, {
+            headers: {
+                Authorization: `Bearer ${id_token}`,
+            },
+        })
+        if (!res.ok) {
+            throw new Error('Failed to fetch Google user')
+        }
+        const data = await res.json() as { id: string; email: string; verified_email: boolean; name: string; picture: string }
+        return data
+    } catch (error) {
+        throw new AppError('Failed to fetch Google profile', 400)
+    }
+}
+
+export async function verifyGoogleLogin(code: string) {
+    const { id_token, access_token } = await getGoogleTokens(code)
+    const googleUser = await getGoogleUser(id_token, access_token)
+
+    if (!googleUser.verified_email) {
+        throw new AppError('Google email not verified', 400)
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { email: googleUser.email.toLowerCase() },
+        include: {
+            Alumni: true,
+            UserRoles: true,
+            BranchRep: true,
+            Organisers: true,
+            Judges: true,
+            PID: true,
+            HeadOfCommittee: true,
+        },
+    })
+
+    if (!user) {
+        // User not found, return info to redirect to registration
+        // But the requirement says "prefil the email id in the login page of the google" - ambiguous.
+        // Actually, if login fails, we ideally want to tell the frontend "Email not found, please register"
+        // But for "Sign in with Google", if they don't exist, we can't login.
+        // Let's throw a specific error or return a status? 
+        // For now, standard behavior: throw 404 or specific message.
+        throw new AppError('User not found. Please register first.', 404)
+    }
+
+    return user
+}
+
+export async function verifyGoogleRegistration(code: string) {
+    const { id_token, access_token } = await getGoogleTokens(code)
+    const googleUser = await getGoogleUser(id_token, access_token)
+
+    if (!googleUser.verified_email) {
+        throw new AppError('Google email not verified', 400)
+    }
+
+    // Check if user already exists
+    const existing = await prisma.user.findUnique({
+        where: { email: googleUser.email.toLowerCase() },
+    })
+
+    if (existing) {
+         throw new AppError('User already exists. Please login.', 409)
+    }
+
+    // Sign a verification token
+    const verificationToken = jwt.sign(
+        { email: googleUser.email.toLowerCase(), purpose: 'google-verification' },
+        env.jwtSecret,
+        { expiresIn: '1h' }
+    )
+
+    return {
+        email: googleUser.email.toLowerCase(),
+        name: googleUser.name,
+        verificationToken
+    }
+}
+
+export async function checkEmail(email: string) {
+    const user = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() },
+        select: { id: true, isVerified: true }
+    })
+    return { 
+        exists: !!user,
+        verified: !!user?.isVerified
+    }
 }

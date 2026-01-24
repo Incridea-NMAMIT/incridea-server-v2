@@ -14,6 +14,7 @@ export const signupSchema = z
     collegeId: z.number().int().positive().optional(),
     yearOfGraduation: z.number().int().min(1950).max(new Date().getFullYear() + 10).optional(),
     idDocument: z.string().min(1).optional(),
+    verificationToken: z.string().optional(),
     accommodation: z
       .object({
         gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
@@ -72,6 +73,14 @@ export const signupSchema = z
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, 'Password is required'),
+})
+
+export const googleLoginSchema = z.object({
+  code: z.string().min(1),
+})
+
+export const verifyGoogleRegistrationSchema = z.object({
+    code: z.string().min(1),
 })
 
 export const verifyOtpSchema = z.object({

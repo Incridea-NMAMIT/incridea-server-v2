@@ -10,6 +10,10 @@ import {
   requestPasswordReset,
   resetPasswordWithToken,
   getUserCommitteeSnapshot,
+  getGoogleUrl,
+  verifyGoogleLogin,
+  verifyGoogleRegistration,
+  checkEmail,
 } from '../services/authService'
 import { razorpay } from '../services/razorpay'
 import { getIO } from '../socket'
@@ -70,8 +74,20 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
         // Ideally should revert user creation or return error, but user creation is successful.
     }
 
+    const token = generateToken(user.id)
+
+    res.cookie('token', token, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        domain: process.env.COOKIE_DOMAIN,
+        path: '/',
+        maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
+    })
+
     return res.status(201).json({
       message: 'User saved. Please verify your email with the OTP sent.',
+      token,
       paymentOrder: paymentOrderDetails,
       user: {
         id: user.id,
@@ -350,4 +366,88 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
   } catch (error) {
     return next(error)
   }
+}
+
+export async function getGoogleUrlHandler(req: Request, res: Response, next: NextFunction) {
+    try {
+        const email = req.query.email as string | undefined
+        const url = getGoogleUrl(email)
+        return res.status(200).json({ url })
+    } catch (error) {
+        return next(error)
+    }
+}
+
+export async function verifyGoogleRegistrationHandler(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { code } = req.body
+        const result = await verifyGoogleRegistration(code)
+        return res.status(200).json(result)
+    } catch (error) {
+       return next(error)
+    }
+}
+
+export async function googleLoginHandler(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { code } = req.body
+        const user = await verifyGoogleLogin(code)
+        const token = generateToken(user.id)
+        const committee = await getUserCommitteeSnapshot(user.id)
+        
+        void logWebEvent({
+             message: `Google Login success for ${user.email}`,
+             userId: user.id
+        })
+
+        const io = getIO()
+        io.emit('auth:login', { userId: user.id })
+
+        res.cookie('token', token, {
+            httpOnly: false,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            domain: process.env.COOKIE_DOMAIN,
+            path: '/',
+            maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
+        })
+
+       return res.status(200).json({
+          message: 'Logged in',
+          token,
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            category: user.category,
+            collegeId: user.collegeId,
+            roles: user.UserRoles?.map((r) => r.role) ?? [],
+            isBranchRep: Boolean(user.BranchRep),
+            isOrganiser: Array.isArray(user.Organisers) && user.Organisers.length > 0,
+            isJudge: Array.isArray(user.Judges) && user.Judges.length > 0,
+            isVerified: user.isVerified,
+            phoneNumber: user.phoneNumber,
+            yearOfGraduation: user.Alumni?.yearOfGraduation ?? null,
+            alumniIdDocument: user.Alumni?.idDocument ?? null,
+            committeeRole: committee.committeeRole,
+            committeeName: committee.committeeName,
+            committeeStatus: committee.committeeStatus,
+            createdAt: user.createdAt,
+            pid: user.PID?.pidCode || null,
+            HeadOfCommittee: user.HeadOfCommittee || [],
+          },
+        })
+    } catch (error) {
+        return next(error)
+    }
+}
+
+export async function checkEmailHandler(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { email } = req.body
+        const result = await checkEmail(email)
+        return res.status(200).json(result)
+    } catch (error) {
+        return next(error)
+    }
 }

@@ -24,6 +24,9 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url().optional(),
   UPLOADTHING_TOKEN: z.string().min(1),
   SERVER_URL: z.string().url().optional(),
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_REDIRECT_URI: z.string().url().optional(),
 })
 
 const parsed = envSchema.safeParse(process.env)
@@ -56,4 +59,9 @@ export const env = {
     from: parsed.data.MAIL_FROM,
   },
   serverUrl: parsed.data.SERVER_URL ?? 'http://localhost:4000',
+  google: {
+    clientId: parsed.data.GOOGLE_CLIENT_ID,
+    clientSecret: parsed.data.GOOGLE_CLIENT_SECRET,
+    redirectUri: parsed.data.GOOGLE_REDIRECT_URI,
+  },
 }
