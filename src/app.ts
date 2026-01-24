@@ -38,7 +38,7 @@ app.use(cors({
     'https://cultural.incridea.in',
     'https://mc.incridea.in',
     'https://operations.incridea.in',
-
+    'https://www.operations.incridea.in',
     process.env.FRONTEND_URL || ''
   ].filter(Boolean),
   credentials: true,
