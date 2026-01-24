@@ -22,3 +22,24 @@ export async function requireAdmin(req: AuthenticatedRequest, res: Response, nex
     return next(error)
   }
 }
+
+export async function requireAdminOrDocumentation(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ message: 'Unauthorized' })
+    }
+
+    const user = await getUserById(req.user.id)
+    const hasRole = Array.isArray(user.UserRoles)
+      ? user.UserRoles.some((r) => r.role === 'ADMIN' || r.role === 'DOCUMENTATION')
+      : false
+
+    if (!hasRole) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
+
+    return next()
+  } catch (error) {
+    return next(error)
+  }
+}

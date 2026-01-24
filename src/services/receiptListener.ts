@@ -16,8 +16,19 @@ let client: Client | null = null;
 
 export async function startReceiptListener() {
     console.log('[ReceiptListener] Starting payment listener...');
+    await connectWithRetry();
+}
 
+async function connectWithRetry() {
     try {
+        if (client) {
+            try {
+                await client.end();
+            } catch (err) {
+                console.error('[ReceiptListener] Error closing existing client:', err);
+            }
+        }
+
         client = new Client({
             connectionString: env.databaseUrl,
         });
@@ -45,13 +56,23 @@ export async function startReceiptListener() {
 
         client.on('error', (err) => {
             console.error('[ReceiptListener] Database connection error:', err);
-            // Attempt to reconnect? For now just log.
-            // In production, you'd want robust reconnection logic.
+            scheduleReconnect();
+        });
+
+        client.on('end', () => {
+             console.warn('[ReceiptListener] Database connection ended unexpectedly.');
+             scheduleReconnect();
         });
 
     } catch (error) {
         console.error('[ReceiptListener] Failed to start listener:', error);
+        scheduleReconnect();
     }
+}
+
+function scheduleReconnect() {
+    console.log('[ReceiptListener] Scheduling reconnection in 5 seconds...');
+    setTimeout(connectWithRetry, 5000);
 }
 
 async function generateReceipt(orderId: string) {

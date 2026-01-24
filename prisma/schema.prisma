@@ -115,11 +115,11 @@ model Alumni {
 }
 
 model College {
-  id                 Int         @id @default(autoincrement())
+  id                 Int                  @id @default(autoincrement())
   name               String
   details            String?
-  championshipPoints Int         @default(0)
-  type               CollegeType @default(ENGINEERING)
+  ChampionshipPoints ChampionshipPoints[]
+  type               CollegeType          @default(ENGINEERING)
 
   Users User[]
 
@@ -212,10 +212,11 @@ model Event {
 
   Teams Team[]
 
-  Rounds           Round[]
-  Winner           Winners[]
-  Organisers       Organiser[]
-  CertificateIssue CertificateIssue[]
+  Rounds             Round[]
+  Winner             Winners[]
+  Organisers         Organiser[]
+  CertificateIssue   CertificateIssue[]
+  ChampionshipPoints ChampionshipPoints[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -461,8 +462,11 @@ model Winners {
 
   type WinnerType
 
-  teamId Int  @unique
-  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId Int?  @unique
+  Team   Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  pidId Int? @unique
+  PID   PID? @relation(fields: [pidId], references: [id], onDelete: Cascade)
 
   eventId Int
   Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -472,6 +476,7 @@ model Winners {
 
   @@unique([eventId, type])
   @@index([teamId])
+  @@index([pidId])
   @@index([eventId])
 }
 
@@ -737,12 +742,14 @@ model PID {
   PaymentOrder   PaymentOrder @relation(fields: [paymentOrderId], references: [orderId], onDelete: Cascade)
 
   AccommodationPayment AccommodationPayment[]
+  ChampionshipPoints   ChampionshipPoints[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   TeamMembers TeamMember[]
   LedTeams    Team[]       @relation("TeamLeader")
+  winners     Winners?
 
   @@index([userId])
   @@index([pidCode])
@@ -796,6 +803,30 @@ model DocumentAccess {
   @@unique([documentId, committeeId])
   @@index([committeeId])
   @@index([documentId])
+}
+
+model ChampionshipPoints {
+  id String @id @default(cuid())
+
+  points Int @default(0)
+
+  eventId Int
+  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  winnerType WinnerType
+
+  pidId Int
+  PID   PID @relation(fields: [pidId], references: [id], onDelete: Cascade)
+
+  collegeId Int
+  College   College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([pidId])
+  @@index([collegeId])
 }
 
 enum AccessType {

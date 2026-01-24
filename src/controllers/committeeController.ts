@@ -393,10 +393,11 @@ export async function searchCommitteeUsers(req: AuthenticatedRequest, res: Respo
 
     const roles = await getUserRoles(req.user.id)
     const isAdmin = roles.includes('ADMIN')
+    const isDocumentation = roles.includes('DOCUMENTATION')
 
     const headCommittee = await prisma.committee.findFirst({ where: { headUserId: req.user.id } })
 
-    if (!isAdmin && !headCommittee) {
+    if (!isAdmin && !isDocumentation && !headCommittee) {
       return res.status(403).json({ message: 'Forbidden' })
     }
 
@@ -477,6 +478,14 @@ export async function getCommitteeMembers(req: AuthenticatedRequest, res: Respon
       return res.status(403).json({ message: 'Forbidden' })
     }
 
+    const committee = await prisma.committee.findUnique({
+      where: { id: Number(committeeId) },
+      include: {
+        headUser: { select: userSummarySelect },
+        coHeadUser: { select: userSummarySelect },
+      }
+    })
+
     const members = await prisma.committeeMembership.findMany({
       where: {
         committeeId: Number(committeeId),
@@ -500,9 +509,89 @@ export async function getCommitteeMembers(req: AuthenticatedRequest, res: Respon
       name: m.User.name,
       email: m.User.email,
       phoneNumber: m.User.phoneNumber,
+      designation: 'Member',
     }))
 
+    if (committee?.coHeadUser) {
+        formattedMembers.unshift({
+            userId: committee.coHeadUser.id,
+            name: committee.coHeadUser.name,
+            email: committee.coHeadUser.email,
+            phoneNumber: committee.coHeadUser.phoneNumber,
+            designation: 'Co-Head',
+        })
+    }
+
+    if (committee?.headUser) {
+        formattedMembers.unshift({
+            userId: committee.headUser.id,
+            name: committee.headUser.name,
+            email: committee.headUser.email,
+            phoneNumber: committee.headUser.phoneNumber,
+            designation: 'Head',
+        })
+    }
+
     return res.status(200).json({ members: formattedMembers })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function exportAllCommitteeMembers(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user?.id) return res.status(401).json({ message: 'Unauthorized' })
+
+    const roles = await getUserRoles(req.user.id)
+    if (!roles.includes('DOCUMENTATION') && !roles.includes('ADMIN')) {
+      return res.status(403).json({ message: 'Forbidden' })
+    }
+
+    const committees = await prisma.committee.findMany({
+      include: {
+        headUser: { select: userSummarySelect },
+        coHeadUser: { select: userSummarySelect },
+        Members: {
+          where: { status: CommitteeMembershipStatus.APPROVED },
+          include: { User: { select: userSummarySelect } },
+        },
+      },
+      orderBy: { name: 'asc' },
+    })
+
+    const allMembers: any[] = []
+
+    committees.forEach((committee) => {
+      if (committee.headUser) {
+        allMembers.push({
+          committee: committee.name,
+          name: committee.headUser.name,
+          email: committee.headUser.email,
+          phoneNumber: committee.headUser.phoneNumber,
+          designation: 'Head',
+        })
+      }
+      if (committee.coHeadUser) {
+        allMembers.push({
+          committee: committee.name,
+          name: committee.coHeadUser.name,
+          email: committee.coHeadUser.email,
+          phoneNumber: committee.coHeadUser.phoneNumber,
+          designation: 'Co-Head',
+        })
+      }
+      committee.Members.forEach((member) => {
+        allMembers.push({
+          committee: committee.name,
+          name: member.User.name,
+          email: member.User.email,
+          phoneNumber: member.User.phoneNumber,
+          designation: 'Member',
+        })
+      })
+    })
+
+    return res.status(200).json({ members: allMembers })
   } catch (error) {
     return next(error)
   }

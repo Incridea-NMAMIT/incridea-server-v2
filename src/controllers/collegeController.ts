@@ -6,10 +6,10 @@ export async function listColleges(_req: Request, res: Response, next: NextFunct
     const colleges = await prisma.college.findMany({
       orderBy: { id: 'asc' },
       select: {
+
         id: true,
         name: true,
         details: true,
-        championshipPoints: true,
         type: true,
       },
     })

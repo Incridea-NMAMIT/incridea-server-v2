@@ -230,6 +230,7 @@ export async function promoteTeam(req: AuthenticatedRequest, res: Response, next
     }
 }
 
+
 export async function selectWinner(req: AuthenticatedRequest, res: Response, next: NextFunction) {
      try {
         const userId = ensureAuthUser(req, res)
@@ -239,17 +240,40 @@ export async function selectWinner(req: AuthenticatedRequest, res: Response, nex
         const teamId = Number(req.body.teamId)
         const type = req.body.type // WINNER, RUNNER_UP, etc.
 
-        // Allow judging or require admin/organiser? V1 seemed to allow judges in final round.
         const isJudge = await prisma.judge.findFirst({ where: { userId, eventId } }) 
         if (!isJudge) return res.status(403).json({ message: 'Not authorized' })
 
-        await prisma.winners.create({
-            data: {
-                eventId,
-                teamId,
-                type
-            }
-        })
+        const event = await prisma.event.findUnique({ where: { id: eventId } })
+        if (!event) return res.status(404).json({ message: 'Event not found' })
+
+        if (event.eventType === 'INDIVIDUAL' || event.eventType === 'INDIVIDUAL_MULTIPLE_ENTRY') {
+             // For individual events, we need the PID. 
+             // We can find the PID from the Team -> TeamMembers -> PID relationship.
+             // Since individual events have 1 team member per team (effectively), we check that.
+             const team = await prisma.team.findUnique({
+                 where: { id: teamId },
+                 include: { TeamMembers: true }
+             })
+             if (!team || team.TeamMembers.length === 0) return res.status(404).json({ message: 'Team/Participant not found' })
+             const pidId = team.TeamMembers[0].pidId
+             
+             await prisma.winners.create({
+                data: {
+                    eventId,
+                    pidId,
+                    type
+                }
+             })
+        } else {
+             await prisma.winners.create({
+                data: {
+                    eventId,
+                    teamId,
+                    type
+                }
+            })
+        }
+
         try {
             getIO().to(`event-${eventId}`).emit('winner-update', { eventId })
         } catch (e) {
@@ -319,6 +343,7 @@ export async function updateRoundStatus(req: AuthenticatedRequest, res: Response
     }
 }
 
+
 export async function getWinnersByEvent(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
         const userId = ensureAuthUser(req, res)
@@ -344,6 +369,16 @@ export async function getWinnersByEvent(req: AuthenticatedRequest, res: Response
                     select: {
                         id: true,
                         name: true
+                    }
+                },
+                PID: {
+                    include: {
+                        User: {
+                            select: {
+                                name: true,
+                                email: true
+                            }
+                        }
                     }
                 }
             }
@@ -399,6 +434,18 @@ export async function getAllWinners(req: AuthenticatedRequest, res: Response, ne
              }
            }
         },
+                    }
+                },
+                PID: {
+                    include: {
+                        User: {
+                             select: {
+                                 name: true,
+                                 email: true,
+                                 phoneNumber: true,
+                                 id: true
+                             }
+                        }
                     }
                 }
             }

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { authenticateJWT } from '../middlewares/authMiddleware'
-import { requireAdmin } from '../middlewares/authorizeAdmin'
+import { requireAdminOrDocumentation } from '../middlewares/authorizeAdmin'
 import { validateRequest } from '../middlewares/validateRequest'
 import {
   applyToCommittee,
@@ -11,6 +11,7 @@ import {
   searchCommitteeUsers,
   removeCommitteeMember,
   getCommitteeMembers,
+  exportAllCommitteeMembers,
 } from '../controllers/committeeController'
 import {
   applyCommitteeSchema,
@@ -27,10 +28,11 @@ router.use(authenticateJWT)
 router.get('/state', getCommitteeState)
 router.get('/users', searchCommitteeUsers)
 router.post('/apply', validateRequest(applyCommitteeSchema), applyToCommittee)
-router.post('/assign-head', requireAdmin, validateRequest(assignHeadSchema), assignCommitteeHead)
+router.post('/assign-head', requireAdminOrDocumentation, validateRequest(assignHeadSchema), assignCommitteeHead)
 router.post('/assign-cohead', validateRequest(assignCoHeadSchema), assignCommitteeCoHead)
 router.post('/approve-member', validateRequest(approveMemberSchema), approveCommitteeMember)
 router.post('/remove-member', validateRequest(removeMemberSchema), removeCommitteeMember)
+router.get('/export-all', requireAdminOrDocumentation, exportAllCommitteeMembers)
 router.get('/:committeeId/members', getCommitteeMembers)
 
 export default router

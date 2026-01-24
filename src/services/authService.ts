@@ -37,10 +37,10 @@ async function ensureNmamitCollege() {
     update: {},
     create: {
       id: 1,
+
       name: 'NMAMIT',
       details: 'Default NMAMIT college record',
       type: CollegeType.ENGINEERING,
-      championshipPoints: 0,
     },
   })
 }
