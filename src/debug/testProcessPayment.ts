@@ -2,7 +2,7 @@
 import prisma from '../prisma/client';
 import { Status, PaymentType, PaymentPurpose, PaymentStatus, PaymentMethod } from '@prisma/client';
 import { generatePID } from '../services/pidService';
-import { generateReceipt } from '../utils/receiptGenerator';
+
 
 // --- MOCK CONSTANTS / TYPES ---
 
@@ -107,38 +107,44 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
                  return null;
             }
 
-            // 1. Generate Receipt (Retry up to 3 times)
+            // 1. Generate Receipt using Python Script
             let receiptUrl: string | null = null;
-            let attempts = 0;
-            const maxAttempts = 3;
+            console.log(`Generating receipt for Order ID: ${paymentOrder.orderId} using Python script...`);
+            
+            try {
+                const { exec } = require('child_process');
+                const util = require('util');
+                const execPromise = util.promisify(exec);
+                
+                // Adjust path as needed. Assuming running from project root or providing absolute path.
+                // Using absolute path for safety based on user context
+                const absoluteScriptPath = 'f:\\incridea-server-v2\\scripts\\receipt_generator.py';
+                
+                const { stdout, stderr } = await execPromise(`python "${absoluteScriptPath}" "${paymentOrder.orderId}"`);
+                
+                console.log('Python Script Output:', stdout);
+                if (stderr) console.error('Python Script Error Output:', stderr);
 
-            while (attempts < maxAttempts && !receiptUrl) {
-                attempts++;
-                console.log(`Generating receipt for Order ID: ${paymentOrder.orderId} (Attempt ${attempts}/${maxAttempts})`);
-                try {
-                    receiptUrl = await generateReceipt(paymentOrder as any, user, paymentData);
-                    if (receiptUrl) {
-                        console.log(`Receipt URL generated successfully on attempt ${attempts}: ${receiptUrl}`);
-                    } else {
-                        console.warn(`Attempt ${attempts} failed to generate receipt URL.`);
-                        if (attempts < maxAttempts) {
-                            await new Promise(r => setTimeout(r, 1000));
-                        }
-                    }
-                } catch (err) {
-                    console.error(`Error on receipt generation attempt ${attempts}:`, err);
-                    if (attempts < maxAttempts) {
-                         await new Promise(r => setTimeout(r, 1000));
-                    }
+                // Verify update in DB
+                const updatedOrder = await prisma.paymentOrder.findUnique({ 
+                    where: { orderId: paymentOrder.orderId } 
+                });
+                
+                if (updatedOrder?.receipt) {
+                    receiptUrl = updatedOrder.receipt;
+                    console.log(`Receipt URL verified in DB: ${receiptUrl}`);
+                } else {
+                    console.warn('Python script finished but Receipt URL not found in DB.');
                 }
+
+            } catch (err) {
+                console.error(`Error executing Python receipt generator:`, err);
             }
 
             if (receiptUrl) {
-                // Receipt generation handles the DB update internally now
-                console.log(`Receipt URL obtained: ${receiptUrl}`);
-                // We don't need to manually update DB here anymore as logic moved to generator
+                console.log(`Receipt generation process completed.`);
             } else {
-                console.error(`Failed to generate receipt after ${maxAttempts} attempts. Proceeding to PID generation without receipt.`);
+                console.error(`Failed to generate receipt.`);
             }
 
             // 3. Generate PID

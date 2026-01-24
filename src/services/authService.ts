@@ -11,6 +11,7 @@ import type {
 } from '../schemas/authSchemas'
 import { Category, CollegeType, Gender, Role } from '@prisma/client'
 import { sendEmail } from '../utils/mailer'
+import { getUtilityEmailHtml } from '../templates/utilityEmail'
 import type { CommitteeMembershipStatus } from '@prisma/client'
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10)
@@ -178,10 +179,27 @@ export async function createUserWithProfile(payload: SignupInput) {
     // })
   }
 
+  const emailHtml = getUtilityEmailHtml(`
+    <div style="text-align: center;">
+      <h1 style="color: #ffffff; font-size: 24px; margin-bottom: 16px;">Welcome to Incridea! </h1>
+      <p style="color: #cbd5e1; margin-bottom: 24px; font-size: 16px;">
+        We're super excited to have you on board! To get started, please verify your email address.
+      </p>
+      <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 24px; display: inline-block; margin: 16px 0;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Verification Code</p>
+        <span style="font-family: 'Courier New', monospace; font-size: 32px; letter-spacing: 4px; font-weight: bold; color: #ffffff;">${otpCode}</span>
+      </div>
+      <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+        This code expires in 10 minutes.
+      </p>
+    </div>
+  `)
+
   await sendEmail(
     user.email,
-    'Verify your email',
+    'Verify your email ',
     `Your verification code is ${otpCode}. It expires in 10 minutes.`,
+    emailHtml,
   )
 
   return prisma.user.findUnique({
@@ -307,10 +325,27 @@ export async function resendOtpForUser(email: string) {
     },
   })
 
+  const emailHtml = getUtilityEmailHtml(`
+    <div style="text-align: center;">
+      <h1 style="color: #ffffff; font-size: 24px; margin-bottom: 16px;">New Verification Code </h1>
+      <p style="color: #cbd5e1; margin-bottom: 24px; font-size: 16px;">
+        Did the last one get lost in the dimensions? No worries! Here's a fresh code just for you.
+      </p>
+      <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 24px; display: inline-block; margin: 16px 0;">
+        <p style="margin: 0 0 8px 0; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">Verification Code</p>
+        <span style="font-family: 'Courier New', monospace; font-size: 32px; letter-spacing: 4px; font-weight: bold; color: #ffffff;">${otpCode}</span>
+      </div>
+      <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+        This code expires in 10 minutes.
+      </p>
+    </div>
+  `)
+
   await sendEmail(
     user.email,
-    'Verify your email',
+    'Verify your email ',
     `Your verification code is ${otpCode}. It expires in 10 minutes.`,
+    emailHtml,
   )
 
   return { message: 'OTP resent successfully' }
@@ -436,11 +471,26 @@ export async function requestPasswordReset(payload: ResetPasswordRequestInput) {
 
   const resetLink = `${env.frontendUrl}/reset-password?token=${encodeURIComponent(resetToken)}`
 
+  const emailHtml = getUtilityEmailHtml(`
+    <div style="text-align: center;">
+      <h1 style="color: #ffffff; font-size: 24px; margin-bottom: 16px;">Reset Your Password </h1>
+      <p style="color: #cbd5e1; margin-bottom: 24px; font-size: 16px;">
+        Trouble signing in? No problem! Click the button below to reset your password.
+      </p>
+      <div style="margin: 32px 0;">
+        <a href="${resetLink}" style="background: linear-gradient(135deg, #2563eb, #7c3aed); color: #ffffff; font-weight: 600; padding: 14px 32px; border-radius: 9999px; text-decoration: none; display: inline-block; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);">Reset Password</a>
+      </div>
+      <p style="color: #64748b; font-size: 13px; margin-top: 24px;">
+        This link is valid for 30 minutes.<br>If you didn't request a password reset, you can safely ignore this email.
+      </p>
+    </div>
+  `)
+
   await sendEmail(
     user.email,
-    'Reset your password',
-    `Click the link to reset your password: ${resetLink}
-This link expires in 30 minutes. If you did not request this, please ignore the email.`,
+    'Reset your password ',
+    `Click the link to reset your password: ${resetLink}`,
+    emailHtml,
   )
 
   return { message: 'Password reset link sent' }

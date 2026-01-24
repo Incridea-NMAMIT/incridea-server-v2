@@ -111,7 +111,6 @@ async function main() {
 
   const variableSeeds = [
     'internalRegistrationFeeGen',
-    'internalRegistrationFeeInclusiveMerch',
     'externalRegistrationFee',
     'externalRegistrationFeeOnSpot',
     'internalRegistrationOnSpot',

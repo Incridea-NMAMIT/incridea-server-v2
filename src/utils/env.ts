@@ -31,7 +31,7 @@ export const env = {
   jwtSecret: parsed.data.JWT_SECRET,
   jwtExpiresIn: parsed.data.JWT_EXPIRES_IN ?? '365d',
   port: parsed.data.PORT ?? '4000',
-  frontendUrl: parsed.data.FRONTEND_URL ?? 'http://localhost:5173',
+  frontendUrl: parsed.data.FRONTEND_URL ?? 'http://localhost:3000',
   uploadthing: {
     token: parsed.data.UPLOADTHING_TOKEN,
   },

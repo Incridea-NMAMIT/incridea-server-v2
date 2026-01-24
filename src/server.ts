@@ -4,11 +4,17 @@ import prisma from './prisma/client'
 import { env } from './utils/env'
 import { initSocket } from './socket'
 
+import { startReceiptListener } from './services/receiptListener'
+
 const port = Number(env.port)
 
 async function start() {
   try {
     await prisma.$connect()
+    
+    // Start Receipt Listener
+    startReceiptListener()
+
     const server = http.createServer(app)
     initSocket(server)
     server.listen(port, () => {

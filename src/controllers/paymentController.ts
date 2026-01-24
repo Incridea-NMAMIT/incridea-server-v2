@@ -6,7 +6,7 @@ import { RAZORPAY_WEBHOOK_SECRET, razorpay } from '../services/razorpay'
 import { Status, PaymentType, AccommodationBookingStatus, PaymentPurpose, PaymentStatus, PaymentMethod } from '@prisma/client'
 import { listVariables } from '../services/adminService'
 import { generatePID } from '../services/pidService'
-import { generateReceipt } from '../utils/receiptGenerator'
+
 import { setPaymentStep, getPaymentStep, clearPaymentStep } from '../utils/paymentStatusStore'
 import { getIO } from '../socket'
 
@@ -401,6 +401,14 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
         })
     });
     
+    // Notify Receipt Listener (Trigger Receipt Generation)
+    try {
+        await prisma.$executeRawUnsafe(`NOTIFY payment_success, '${paymentOrder.orderId}'`);
+        console.log(`[PaymentController] Sent NOTIFY payment_success for ${paymentOrder.orderId}`);
+    } catch (e) {
+        console.error('Failed to notify payment_success:', e);
+    }
+    
     console.log(`Payment successful for order ${paymentOrder.orderId}, User ID: ${paymentOrder.userId}`)
 
     // Emit Payment Success
@@ -429,46 +437,11 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
                  return null;
             }
 
-            // 1. Generate Receipt (only if not already present)
-            let receiptUrl = freshPaymentOrder.receipt
-            
-            if (!receiptUrl) {
-                io.to(`user-${freshPaymentOrder.userId}`).emit('generating_receipt')
-                
-                let attempts = 0;
-                const maxAttempts = 3;
+            // 1. Generate Receipt - REMOVED per user request
+            // Skipping directly to PID Generation
 
-                while (attempts < maxAttempts && !receiptUrl) {
-                    attempts++;
-                    console.log(`Generating receipt for Order ID: ${freshPaymentOrder.orderId} (Attempt ${attempts}/${maxAttempts})`);
-                    try {
-                        receiptUrl = await generateReceipt(freshPaymentOrder as any, user, paymentData);
-                        if (receiptUrl) {
-                            console.log(`Receipt URL generated successfully on attempt ${attempts}: ${receiptUrl}`);
-                            // DB update is handled inside generateReceipt
-                            io.to(`user-${freshPaymentOrder.userId}`).emit('receipt_generated', { receipt: receiptUrl })
-                        } else {
-                            console.warn(`Attempt ${attempts} failed to generate receipt URL.`);
-                            if (attempts < maxAttempts) {
-                                await new Promise(r => setTimeout(r, 1000));
-                            }
-                        }
-                    } catch (err) {
-                        console.error(`Error on receipt generation attempt ${attempts}:`, err);
-                        if (attempts < maxAttempts) {
-                             await new Promise(r => setTimeout(r, 1000));
-                        }
-                    }
-                }
-
-                if (!receiptUrl) {
-                     console.error(`Failed to generate receipt after ${maxAttempts} attempts. Proceeding to PID generation without receipt.`);
-                     io.to(`user-${freshPaymentOrder.userId}`).emit('receipt_failed')
-                }
-            } else {
-                console.log('Receipt already exists, skipping generation:', receiptUrl)
-                io.to(`user-${freshPaymentOrder.userId}`).emit('receipt_generated', { receipt: receiptUrl })
-            }
+            // 3. Generate PID
+            console.log(`Generating PID for User ID: ${freshPaymentOrder.userId}...`);
 
             // 3. Generate PID
             console.log(`Generating PID for User ID: ${freshPaymentOrder.userId}...`);
@@ -479,10 +452,23 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
             const pidContext = await generatePID(freshPaymentOrder.userId, freshPaymentOrder.orderId)
             console.log(`PID generated successfully: ${pidContext.pidCode}`)
             
+            // Notify Receipt Listener (Trigger Welcome Email)
+            try {
+                await prisma.$executeRawUnsafe(`NOTIFY pid_generated, '${freshPaymentOrder.userId}'`);
+                console.log(`[PaymentController] Sent NOTIFY pid_generated for User ${freshPaymentOrder.userId}`);
+            } catch (e) {
+                 console.error('Failed to notify pid_generated:', e);
+            }
+            
             setPaymentStep(freshPaymentOrder.orderId, 'COMPLETED')
             
             // Emit PID Generated
             io.to(`user-${freshPaymentOrder.userId}`).emit('pid_generated', { pid: pidContext.pidCode })
+
+            // Send Welcome Email - REMOVED: Now handled by Postgres Listener
+            // const isAlumni = user.category === Category.ALUMNI;
+            // const emailHtml = getWelcomeEmailHtml(user.name, isAlumni ? undefined : pidContext.pidCode);
+            // await sendEmail(user.email, 'Welcome to Incridea!', 'Welcome to Incridea!', emailHtml);
 
             // Optional: Schedule cleanup 
             setTimeout(() => clearPaymentStep(freshPaymentOrder.orderId), 60000) // Clear after 1 minute
@@ -596,8 +582,20 @@ export async function verifyReceiptAccess(req: Request, res: Response) {
       return res.status(403).send('Unauthorized access')
     }
 
-    // Redirect to actual PDF
-    return res.redirect(paymentOrder.receipt)
+    // Serve PDF Inline
+    // Fetch the PDF from the UploadThing URL
+    const response = await fetch(paymentOrder.receipt);
+    
+    if (!response.ok) {
+        throw new Error(`Failed to fetch receipt: ${response.statusText}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="receipt_${orderId}.pdf"`);
+    return res.send(buffer);
 
   } catch (error) {
     console.error('Verify Receipt Access Error:', error)
