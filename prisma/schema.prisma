@@ -81,6 +81,7 @@ model User {
 
   AccommodationPayment AccommodationPayment[]
   AccommodationBooking AccommodationBooking[]
+  documentUserAccesses DocumentUserAccess[]
 
   @@index([collegeId])
   @@index([id])
@@ -167,8 +168,13 @@ model Committee {
   Members         CommitteeMembership[]
   documentDetails DocumentDetails[]
   documentAccess  DocumentAccess[]
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+
+  // Access Control
+  canCreateDocuments  Boolean @default(false)
+  canCreateClassified Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model CommitteeMembership {
@@ -645,6 +651,7 @@ enum Role {
   ADMIN
   JURY
   DOCUMENTATION
+  ACCOMMODATION
 }
 
 enum Status {
@@ -785,8 +792,9 @@ model DocumentDetails {
 
   Documents Document[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  documentUserAccesses DocumentUserAccess[]
 
   @@index([committeeId])
 }
@@ -803,6 +811,21 @@ model DocumentAccess {
   @@unique([documentId, committeeId])
   @@index([committeeId])
   @@index([documentId])
+}
+
+model DocumentUserAccess {
+  id         Int @id @default(autoincrement())
+  documentId Int
+  userId     Int
+
+  document DocumentDetails @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([documentId, userId])
+  @@index([documentId])
+  @@index([userId])
 }
 
 model ChampionshipPoints {
@@ -984,4 +1007,12 @@ model Payment {
   @@index([userId])
   @@index([registrationId])
   @@index([gatewayOrderId])
+}
+
+model DocumentationSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  value     Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

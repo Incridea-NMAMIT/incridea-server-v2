@@ -9,6 +9,13 @@ async function ensureSetting(key, defaultValue) {
   }
 }
 
+async function ensureDocumentationSetting(key, defaultValue) {
+  const existing = await prisma.documentationSetting.findUnique({ where: { key } })
+  if (!existing) {
+    await prisma.documentationSetting.create({ data: { key, value: defaultValue } })
+  }
+}
+
 async function ensureVariable(key, defaultValue) {
   const existing = await prisma.variable.findUnique({ where: { key } })
   if (!existing) {
@@ -108,6 +115,10 @@ async function main() {
   await ensureSetting('isRegistrationOpen', false)
   await ensureSetting('isSpotRegistration', false)
   await ensureSetting('isCommitteeRegOpen', false)
+
+  await ensureDocumentationSetting('DOC_SHARE_CLASSIFIED', false)
+  await ensureDocumentationSetting('DOC_ALLOW_CREATE_CLASSIFIED', false)
+  await ensureDocumentationSetting('DOC_SHARE_SHARED', false)
 
   const variableSeeds = [
     'internalRegistrationFeeGen',

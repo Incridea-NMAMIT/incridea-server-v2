@@ -58,8 +58,20 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
     const coHeadCommittees = committees.filter((c) => c.coHeadUserId === userId)
 
     const managedCommittees = [
-      ...headCommittees.map((c) => ({ id: c.id, name: c.name, role: 'HEAD' as const })),
-      ...coHeadCommittees.map((c) => ({ id: c.id, name: c.name, role: 'CO_HEAD' as const })),
+      ...headCommittees.map((c) => ({
+        id: c.id,
+        name: c.name,
+        role: 'HEAD' as const,
+        canCreateDocuments: c.canCreateDocuments,
+        canCreateClassified: c.canCreateClassified,
+      })),
+      ...coHeadCommittees.map((c) => ({
+        id: c.id,
+        name: c.name,
+        role: 'CO_HEAD' as const,
+        canCreateDocuments: c.canCreateDocuments,
+        canCreateClassified: c.canCreateClassified,
+      })),
     ]
 
     let myRole: 'HEAD' | 'CO_HEAD' | 'MEMBER' | null = null
@@ -153,6 +165,8 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
         coHead: committee.coHeadUser
           ? { id: committee.coHeadUser.id, name: committee.coHeadUser.name, email: committee.coHeadUser.email }
           : null,
+        canCreateDocuments: committee.canCreateDocuments,
+        canCreateClassified: committee.canCreateClassified,
         memberCount: committee._count.Members,
       })),
       my: {
@@ -592,6 +606,42 @@ export async function exportAllCommitteeMembers(req: AuthenticatedRequest, res: 
     })
 
     return res.status(200).json({ members: allMembers })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+export async function updateCommitteeAccess(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ message: 'Unauthorized' })
+    }
+
+    const { committeeId, canCreateDocuments, canCreateClassified } = req.body
+
+    const roles = await getUserRoles(req.user.id)
+    const isAdmin = roles.includes('ADMIN')
+    const isDocumentation = roles.includes('DOCUMENTATION')
+
+    const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } })
+    const isDocHead = docCommittee?.headUserId === req.user.id
+
+    if (!isAdmin && !isDocHead) {
+      return res.status(403).json({ message: 'Forbidden: Only Document Head or Admin can change access' })
+    }
+
+    const updated = await prisma.committee.update({
+      where: { id: Number(committeeId) },
+      data: {
+        canCreateDocuments,
+        canCreateClassified,
+      },
+    })
+
+    return res.status(200).json({
+      message: 'Access updated',
+      committee: updated,
+    })
   } catch (error) {
     return next(error)
   }

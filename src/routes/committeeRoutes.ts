@@ -12,6 +12,7 @@ import {
   removeCommitteeMember,
   getCommitteeMembers,
   exportAllCommitteeMembers,
+  updateCommitteeAccess,
 } from '../controllers/committeeController'
 import {
   applyCommitteeSchema,
@@ -34,5 +35,6 @@ router.post('/approve-member', validateRequest(approveMemberSchema), approveComm
 router.post('/remove-member', validateRequest(removeMemberSchema), removeCommitteeMember)
 router.get('/export-all', requireAdminOrDocumentation, exportAllCommitteeMembers)
 router.get('/:committeeId/members', getCommitteeMembers)
+router.patch('/access', requireAdminOrDocumentation, updateCommitteeAccess)
 
 export default router
