@@ -621,7 +621,6 @@ export async function updateCommitteeAccess(req: AuthenticatedRequest, res: Resp
 
     const roles = await getUserRoles(req.user.id)
     const isAdmin = roles.includes('ADMIN')
-    const isDocumentation = roles.includes('DOCUMENTATION')
 
     const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } })
     const isDocHead = docCommittee?.headUserId === req.user.id
