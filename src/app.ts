@@ -23,6 +23,7 @@ import accommodationRoutes from './routes/accommodationRoutes'
 const app = express()
 
 app.use(helmet())
+app.set('trust proxy', 1) // Trust first proxy (critical for secure cookies/IP behind Vercel/Nginx)
 app.use(cors({
   origin: [
     'http://localhost:5173',
