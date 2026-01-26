@@ -27,16 +27,29 @@ export async function upsertVariable(key: string, payload: UpsertVariableInput) 
   })
 }
 
-export async function listUsersWithRoles(search?: string) {
+export async function listUsersWithRoles(search?: string, onlyElevated = false) {
   return prisma.user.findMany({
-    where: search
-      ? {
-          OR: [
-            { email: { contains: search, mode: 'insensitive' } },
-            { name: { contains: search, mode: 'insensitive' } },
-          ],
-        }
-      : undefined,
+    where: {
+      AND: [
+        search
+          ? {
+              OR: [
+                { email: { contains: search, mode: 'insensitive' } },
+                { name: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : {},
+        onlyElevated
+          ? {
+              UserRoles: {
+                some: {
+                  role: { not: Role.USER },
+                },
+              },
+            }
+          : {},
+      ],
+    },
     select: {
       id: true,
       name: true,
@@ -45,7 +58,7 @@ export async function listUsersWithRoles(search?: string) {
       UserRoles: { select: { role: true } },
     },
     orderBy: { createdAt: 'desc' },
-    take: 50,
+    take: onlyElevated ? undefined : 50,
   })
 }
 

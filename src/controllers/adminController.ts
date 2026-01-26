@@ -57,7 +57,8 @@ export async function putVariable(req: AuthenticatedRequest, res: Response, next
 export async function getUsers(req: Request, res: Response, next: NextFunction) {
   try {
     const search = typeof req.query.q === 'string' ? req.query.q.trim() : undefined
-    const users = await listUsersWithRoles(search)
+    const elevated = req.query.elevated === 'true'
+    const users = await listUsersWithRoles(search, elevated)
 
     return res.status(200).json({
       users: users.map((u) => ({
