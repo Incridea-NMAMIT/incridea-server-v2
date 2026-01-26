@@ -87,11 +87,13 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
     const token = generateTokenWithSession(user.id, session.id)
 
     const isProduction = process.env.NODE_ENV === 'production'
+    const domain = process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined) // undefined for localhost to let browser handle it
+
     res.cookie('token', token, {
         httpOnly: true,
         secure: isProduction,
-        sameSite: 'lax',
-        domain: process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined),
+        sameSite: isProduction ? 'lax' : 'lax', // Lax is good for navigation
+        domain: domain,
         path: '/',
         maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
     })
@@ -156,11 +158,13 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     io.emit('auth:login', { userId: user.id })
 
     const isProduction = process.env.NODE_ENV === 'production'
+    const domain = process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined)
+
     res.cookie('token', token, {
        httpOnly: true,
        secure: isProduction,
-       sameSite: 'lax', // Use Lax for better mobile support (subdomains are same-site)
-       domain: process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined),
+       sameSite: 'lax', 
+       domain: domain,
        path: '/',
        maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
     })
@@ -221,11 +225,13 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
     io.emit('auth:login', { userId: user.id })
 
     const isProduction = process.env.NODE_ENV === 'production'
+    const domain = process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined)
+
     res.cookie('token', token, {
         httpOnly: true,
         secure: isProduction,
         sameSite: 'lax',
-        domain: process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined),
+        domain: domain,
         path: '/',
         maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
     })
@@ -394,11 +400,13 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
     }
 
     const isProduction = process.env.NODE_ENV === 'production'
+    const domain = process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined)
+
     res.clearCookie('token', {
       httpOnly: true,
       secure: isProduction,
       sameSite: 'lax',
-      domain: process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined),
+      domain: domain,
       path: '/'
     })
     return res.status(200).json({ message: 'Logged out successfully' })
@@ -452,11 +460,13 @@ export async function googleLoginHandler(req: Request, res: Response, next: Next
         io.emit('auth:login', { userId: user.id })
 
         const isProduction = process.env.NODE_ENV === 'production'
+        const domain = process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined)
+
         res.cookie('token', token, {
             httpOnly: true,
             secure: isProduction,
             sameSite: 'lax',
-            domain: process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined),
+            domain: domain,
             path: '/',
             maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
         })

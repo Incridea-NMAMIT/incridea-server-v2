@@ -6,7 +6,22 @@ let io: Server
 export const initSocket = (server: HttpServer) => {
   io = new Server(server, {
     cors: {
-      origin: '*',
+      origin: [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://localhost:3002',
+        'http://localhost:3003',
+        'https://incridea.in',
+        'https://api.incridea.in',
+        'https://dashboard.incridea.in',
+        'https://www.incridea.in',
+        'https://auth.incridea.in',
+        'https://cultural.incridea.in',
+        'https://mc.incridea.in',
+        'https://operations.incridea.in',
+        'https://client-v2.incridea.in'
+      ],
       methods: ['GET', 'POST'],
     },
   })

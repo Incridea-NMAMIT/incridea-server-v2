@@ -53,9 +53,7 @@ export async function authenticateJWT(req: AuthenticatedRequest, res: Response, 
              return res.status(401).json({ message: 'Session expired' })
         }
     } else {
-        // Fallback for old tokens (during migration) -> OR we can force logout.
-        // User requested "Once after this change whatever the login in done ... should be logged out"
-        // So we strictly require sessionId.
+        // Strictly require sessionId in token
         return res.status(401).json({ message: 'Invalid session structure. Please login again.' })
     }
 
