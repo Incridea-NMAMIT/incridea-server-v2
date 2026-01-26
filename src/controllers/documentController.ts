@@ -61,14 +61,15 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
             where: { userId, committeeId: docCommittee.id }
         });
         const isHead = (docCommittee.headUserId === userId || docCommittee.coHeadUserId === userId);
-        const userRole = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+        const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+        const isDocRole = await prisma.userRole.findFirst({ where: { userId, role: 'DOCUMENTATION' } });
 
         const targetCommittee = await prisma.committee.findUnique({ where: { name: committee } });
         if (!targetCommittee) return res.status(400).json({ message: 'Target committee not found' });
 
         const isTargetHead = (targetCommittee.headUserId === userId || targetCommittee.coHeadUserId === userId);
 
-        if (!isMember && !isHead && !userRole) {
+        if (!isMember && !isHead && !isAdmin && !isDocRole) {
             if (isTargetHead) {
                 // Check if committee has document creation access
                 if (!targetCommittee.canCreateDocuments) {
@@ -123,7 +124,7 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
         // Implies frontend should NOT send `isClassified=true` by default if they don't have permission.
         // But backend must enforce.
         
-        if (isTargetHead && !isHead && !isMember && !userRole) {
+        if (isTargetHead && !isHead && !isMember && !isAdmin && !isDocRole) {
             if (!targetCommittee.canCreateDocuments) {
                  return res.status(403).json({ message: 'Forbidden: Document creation is disabled for this committee' });
             }
@@ -140,8 +141,8 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
         // Check for CoHead creation permission
 
 
-        // If user is NOT Head and NOT Admin, check for classified creation permission (applies to CoHead/Member)
-        if (!isHead && !userRole && isClassified) {
+        // If user is NOT Head and NOT Admin and NOT Target Head, check for classified creation permission (applies to CoHead/Member/DocRole)
+        if (!isHead && !isAdmin && !isTargetHead && isClassified) {
             const allowClassifiedSetting = await prisma.setting.findUnique({ where: { key: 'DOC_ALLOW_CREATE_CLASSIFIED' } });
             if (!allowClassifiedSetting?.value) {
                  return res.status(403).json({ message: 'Forbidden: Classified document creation is currently disabled for your role.' });
@@ -149,7 +150,7 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
         }
 
         let committeeCode = CommitteeCodeMap[committee as CommitteeName];
-        if (isClassified && !isTargetHead) {
+        if (isClassified) {
             committeeCode = 'CLS';
         }
         
@@ -254,8 +255,9 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
         });
         const isHead = (docCommittee.headUserId === userId || docCommittee.coHeadUserId === userId);
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+        const isDocRole = await prisma.userRole.findFirst({ where: { userId, role: 'DOCUMENTATION' } });
 
-        if (!isMember && !isHead && !isAdmin) {
+        if (!isMember && !isHead && !isAdmin && !isDocRole) {
              // Check if user is Committee Head/CoHead of the document's committee
              // We need to fetch committee of the document first, but we haven't fetched docDetails yet.
              // Let's fetch docDetails first (swap order).
@@ -269,7 +271,7 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
         if (!docDetails) return res.status(404).json({ message: 'Document not found' });
         
         // Moved Auth Check here
-        if (!isMember && !isHead && !isAdmin) {
+        if (!isMember && !isHead && !isAdmin && !isDocRole) {
              const targetCommittee = docDetails.committee;
              const isTargetHead = (targetCommittee.headUserId === userId || targetCommittee.coHeadUserId === userId);
              
@@ -291,11 +293,21 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
         const lastDoc = docDetails.Documents[0];
         if (!lastDoc) return res.status(500).json({ message: 'No versions found' });
 
+        // Enforce Ownership for Members/DocRole (Non-Admins/Non-Heads of Doc)
+        if (!isAdmin && !isHead && (isMember || isDocRole)) {
+             if (lastDoc.generatedById !== userId) {
+                 return res.status(403).json({ message: 'Forbidden: You can only revise your own documents.' });
+             }
+        }
+
         const newVersion = lastDoc.version + 1;
         
         // Code Generation
         const bbb = lastDoc.documentCode.substring(3, 6);
-        const committeeCode = CommitteeCodeMap[docDetails.committee.name];
+        let committeeCode = CommitteeCodeMap[docDetails.committee.name];
+        if (docDetails.isClassified) {
+            committeeCode = 'CLS';
+        }
         
         const now = new Date();
         const yy = now.getFullYear().toString().slice(-2);
@@ -481,8 +493,9 @@ export const getAllDocuments = async (req: AuthenticatedRequest, res: Response) 
         const isHead = docCommittee.headUserId === userId;
         const isCoHead = docCommittee.coHeadUserId === userId;
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+        const isDocRole = await prisma.userRole.findFirst({ where: { userId, role: 'DOCUMENTATION' } });
 
-        if (!isMember && !isHead && !isCoHead && !isAdmin) {
+        if (!isMember && !isHead && !isCoHead && !isAdmin && !isDocRole) {
              return res.status(403).json({ message: 'Forbidden' });
         }
         
@@ -1110,6 +1123,84 @@ export const removeDocumentUserAccess = async (req: AuthenticatedRequest, res: R
         });
 
         return res.json({ message: 'Access removed successfully' });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+export const getDocumentByCode = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { code } = req.params;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+        // Search for Document by code
+        const document = await prisma.document.findUnique({
+            where: { documentCode: code },
+            include: {
+                docDetails: {
+                    include: {
+                        committee: true,
+                        documentAccess: { include: { committee: true } },
+                        documentUserAccesses: { include: { user: true } }, // To see shared users?
+                        Documents: {
+                            orderBy: { version: 'desc' }
+                        }
+                    }
+                },
+                generatedBy: true
+            }
+        });
+
+        if (!document) return res.status(404).json({ message: 'Document not found' });
+
+        // Auth Check
+        // Prompt says: "accessible to Documentation Head and Admin".
+        // Should we restrict it strictly?
+        // "When scanned the document barcode it must popup all the details..." 
+        // implies the user scanning it must have permission.
+        
+        const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
+        const isDocHead = docCommittee?.headUserId === userId; // Head only? Or CoHead too? 
+        // Prompt says "Documentation Head and Admin". 
+        // Usually CoHead has similar rights. Let's include CoHead for now or stick to strict prompt?
+        // Let's stick to strict prompts unless "Documentation Head" implies the Role/Position which might include CoHead.
+        // But let's simplify: Admin and Doc Head.
+        
+        const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+
+        if (!isDocHead && !isAdmin) {
+             return res.status(403).json({ message: 'Forbidden: Only Documentation Head and Admin can scan documents' });
+        }
+
+        const docDetails = document.docDetails;
+
+        // Attach user names for Revisions
+        const revisions = await Promise.all(docDetails.Documents.map(async doc => {
+            const generator = await prisma.user.findUnique({
+                where: { id: doc.generatedById },
+                select: { name: true }
+            });
+            return {
+                ...doc,
+                generatedByName: generator?.name || 'Unknown'
+            };
+        }));
+        
+        // Construct Response
+        const responseData = {
+            ...docDetails,
+            Documents: revisions,
+            currentVersion: document,
+            committeeName: docDetails.committee.name,
+            sharedAccess: docDetails.documentAccess.map(da => ({
+                committee: da.committee.name,
+                access: da.accessType
+            }))
+        };
+
+        return res.json(responseData);
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: 'Internal Server Error' });

@@ -2,11 +2,14 @@
 import { Router } from 'express';
 import { authenticateJWT } from '../middlewares/authMiddleware';
 import { upload } from '../config/multerConfig'; 
-import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments, shareDocumentWithCoHead, getSharedDocuments, getDocumentSettings, updateDocumentSettings, getEligibleUsersForSharing, shareDocumentWithUsers, editDocumentDetails, getDocumentUserAccess, removeDocumentUserAccess } from '../controllers/documentController';
+import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments, shareDocumentWithCoHead, getSharedDocuments, getDocumentSettings, updateDocumentSettings, getEligibleUsersForSharing, shareDocumentWithUsers, editDocumentDetails, getDocumentUserAccess, removeDocumentUserAccess, getDocumentByCode } from '../controllers/documentController';
 
 const router = Router();
 
 router.use(authenticateJWT);
+
+// Scan Document (Admin/Doc Head)
+router.get('/code/:code', getDocumentByCode);
 
 // Create new document (Doc Team)
 router.post('/create-document', authenticateJWT, upload.single('file'), createDocument);

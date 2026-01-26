@@ -62,6 +62,8 @@ import registrationRoutes from './routes/registrationRoutes'
 import quizRoutes from './routes/quizRoutes'
 import judgingRoutes from './routes/judgingRoutes'
 
+import statsRoutes from './routes/stats'
+
 app.use('/api/auth', authRoutes)
 app.use('/api/protected', protectedRoutes)
 app.use('/api/colleges', collegeRoutes)
@@ -78,6 +80,7 @@ app.use('/api/payment', paymentRoutes)
 app.use('/api/uploadthing', uploadthingHandler)
 app.use('/api/documents', documentRoutes)
 app.use('/api/accommodation', accommodationRoutes)
+app.use('/api/stats', statsRoutes)
 
 
 app.use((_req, res) => {
