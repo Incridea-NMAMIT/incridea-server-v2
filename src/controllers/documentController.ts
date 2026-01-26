@@ -75,8 +75,6 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
                      return res.status(403).json({ message: 'Forbidden: Document creation is disabled for this committee' });
                 }
 
-                // Enforce classified for Committee Heads creating documents for Doc Head visibility
-                isClassified = true;
             } else {
                 return res.status(403).json({ message: 'Forbidden: You do not have permission to create documents for this committee' });
             }
@@ -125,7 +123,7 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
         // Implies frontend should NOT send `isClassified=true` by default if they don't have permission.
         // But backend must enforce.
         
-        if (isTargetHead) {
+        if (isTargetHead && !isHead && !isMember && !userRole) {
             if (!targetCommittee.canCreateDocuments) {
                  return res.status(403).json({ message: 'Forbidden: Document creation is disabled for this committee' });
             }
@@ -395,19 +393,73 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
             return false;
         });
 
-        // Extract documents from valid access records
         const sharedDocs = validAccessRecords.map(a => ({
             ...a.document,
-            sharedVia: a.committeeId // Optional: could help identifying which committee granted access
+            sharedVia: a.committeeId 
         }));
 
-        // Remove duplicates if a doc is shared with multiple committees the user leads (though logic suggests one entry per committee)
-        // Access records are unique on [docId, committeeId], so simple mapping is fine.
-        // But if user is head of A and B, and doc is shared with A and B, it might appear twice?
-        // Let's deduplicate by ID just in case.
-        const uniqueSharedDocs = Array.from(new Map(sharedDocs.map(item => [item.id, item])).values());
+        // 4. Fetch Documents Shared via User Access (Directly to User)
+        const userAccessDocs = await prisma.documentUserAccess.findMany({
+            where: { userId },
+            include: {
+                document: {
+                    include: {
+                        Documents: { orderBy: { version: 'desc' }, take: 1 },
+                        committee: true
+                    }
+                }
+            }
+        });
 
-        return res.json({ owned: ownedDocs, shared: uniqueSharedDocs });
+        const userSharedDocs = userAccessDocs.map(a => ({
+            ...a.document,
+            sharedVia: 'USER'
+        }));
+
+        const allSharedDocs = [...sharedDocs, ...userSharedDocs];
+
+        // Remove duplicates
+        const uniqueSharedDocs = Array.from(new Map(allSharedDocs.map(item => [item.id, item])).values());
+
+        // Helper to attach user names
+        const attachUserNames = async (docs: any[]) => {
+            return Promise.all(docs.map(async d => {
+                const latestDoc = d.Documents[0]; // Assuming sorted by version desc
+                let createdByName = 'Unknown';
+                let revisedByName = null;
+
+                if (latestDoc) {
+                    // Fetch Creator (First Version)
+                    const firstDoc = await prisma.document.findFirst({
+                        where: { docDetailsId: d.id, version: 1 },
+                        select: { generatedById: true }
+                    });
+                    
+                    if (firstDoc) {
+                        const creator = await prisma.user.findUnique({
+                            where: { id: firstDoc.generatedById },
+                            select: { name: true }
+                        });
+                        createdByName = creator?.name || 'Unknown';
+                    }
+
+                    // Fetch Reviser (Latest Version if version > 1)
+                    if (latestDoc.version > 1) {
+                         const reviser = await prisma.user.findUnique({
+                            where: { id: latestDoc.generatedById },
+                            select: { name: true }
+                        });
+                        revisedByName = reviser?.name;
+                    }
+                }
+                return { ...d, createdByName, revisedByName };
+            }));
+        };
+
+        const ownedDocsWithUser = await attachUserNames(ownedDocs);
+        const sharedDocsWithUser = await attachUserNames(uniqueSharedDocs);
+
+        return res.json({ owned: ownedDocsWithUser, shared: sharedDocsWithUser });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: 'Internal Server Error' });
@@ -649,25 +701,73 @@ export const getSharedDocuments = async (req: AuthenticatedRequest, res: Respons
             }
         }
 
-        const docs = await prisma.documentDetails.findMany({
+        // 1. Incoming: Documents from OTHER committees that are Classified (and effectively shared with Doc Team by system rule)
+        const incomingDocs = await prisma.documentDetails.findMany({
             where: {
                 isClassified: true,
                 committeeId: { not: docCommittee.id }
             },
             include: {
-                Documents: {
-                    orderBy: { version: 'desc' },
-                    take: 1
-                },
+                Documents: { orderBy: { version: 'desc' }, take: 1 },
                 committee: true,
-                documentAccess: { include: { committee: true } }
-            },
-            orderBy: [
-                { committee: { name: 'asc' } },
-                { createdAt: 'desc' }
-            ]
+                documentAccess: { include: { committee: true } },
+                documentUserAccesses: { include: { user: { include: { HeadOfCommittee: true, CoHeadOfCommittee: true } } } }
+            }
         });
-        return res.json(docs);
+
+        // 2. Outgoing: Documents created by Documentation Team that are SHARED
+        // Shared via Committee Access OR User Access
+        const outgoingDocs = await prisma.documentDetails.findMany({
+            where: {
+                committeeId: docCommittee.id,
+                OR: [
+                    { documentAccess: { some: {} } },
+                    { documentUserAccesses: { some: {} } }
+                ]
+            },
+            include: {
+                Documents: { orderBy: { version: 'desc' }, take: 1 },
+                committee: true, 
+                documentAccess: { include: { committee: true } },
+                documentUserAccesses: { include: { user: { include: { HeadOfCommittee: true, CoHeadOfCommittee: true } } } }
+            }
+        });
+
+        // Merge and process
+        const allDocs = [...incomingDocs, ...outgoingDocs];
+
+        // Attach Creator Name & Logic
+        // We do this processing here to help the frontend? 
+        // Actually, let's just return the rich data and let frontend group it.
+        // But we need to make sure we attach CreatedBy/RevisedBy names as per previous request (DocumentsPage.tsx).
+        // Since this is the same controller used by Dashboard? No, Dashboard uses `fetchSharedDocuments` -> `getSharedDocuments`.
+        // Operations uses `getDocumentsByCommittee`.
+        // So we just need to ensure consistent user name attachment.
+
+        const docsWithUser = await Promise.all(allDocs.map(async d => {
+            const latestDoc = d.Documents[0];
+            let createdByName = 'Unknown';
+            let revisedByName = null;
+            if (latestDoc) {
+                // Creator
+                 const firstDoc = await prisma.document.findFirst({
+                    where: { docDetailsId: d.id, version: 1 },
+                    select: { generatedById: true }
+                });
+                if (firstDoc) {
+                    const creator = await prisma.user.findUnique({ where: { id: firstDoc.generatedById }, select: { name: true } });
+                    createdByName = creator?.name || 'Unknown';
+                }
+                // Reviser
+                if (latestDoc.version > 1) {
+                     const reviser = await prisma.user.findUnique({ where: { id: latestDoc.generatedById }, select: { name: true } });
+                    revisedByName = reviser?.name;
+                }
+            }
+            return { ...d, createdByName, revisedByName };
+        }));
+
+        return res.json(docsWithUser);
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: 'Internal Server Error' });
@@ -747,7 +847,7 @@ export const getEligibleUsersForSharing = async (_req: AuthenticatedRequest, res
         // 2. All Documentation Committee Members
         
         const headsAndCoHeads = await prisma.committee.findMany({
-            select: { headUser: true, coHeadUser: true }
+            select: { headUser: true, coHeadUser: true, name: true }
         });
         
         const docCommittee = await prisma.committee.findUnique({
@@ -759,13 +859,33 @@ export const getEligibleUsersForSharing = async (_req: AuthenticatedRequest, res
 
         // Add Heads & CoHeads
         headsAndCoHeads.forEach(c => {
-            if (c.headUser) usersMap.set(c.headUser.id, { id: c.headUser.id, name: c.headUser.name, email: c.headUser.email, role: 'Committee Head' });
-            if (c.coHeadUser) usersMap.set(c.coHeadUser.id, { id: c.coHeadUser.id, name: c.coHeadUser.name, email: c.coHeadUser.email, role: 'Committee Co-Head' });
+            if (c.headUser) {
+                const existing = usersMap.get(c.headUser.id);
+                const roleStr = `Head of ${c.name}`;
+                if (existing) {
+                    if (!existing.role.includes(roleStr)) existing.role += `, ${roleStr}`;
+                } else {
+                    usersMap.set(c.headUser.id, { id: c.headUser.id, name: c.headUser.name, email: c.headUser.email, role: roleStr });
+                }
+            }
+            if (c.coHeadUser) {
+                const existing = usersMap.get(c.coHeadUser.id);
+                const roleStr = `Co-Head of ${c.name}`;
+                if (existing) {
+                    if (!existing.role.includes(roleStr)) existing.role += `, ${roleStr}`;
+                } else {
+                    usersMap.set(c.coHeadUser.id, { id: c.coHeadUser.id, name: c.coHeadUser.name, email: c.coHeadUser.email, role: roleStr });
+                }
+            }
         });
 
          // Add Doc Members
          docCommittee?.Members.forEach(m => {
-            if (m.User) usersMap.set(m.User.id, { id: m.User.id, name: m.User.name, email: m.User.email, role: 'Documentation Team' });
+            if (m.User) {
+                if (!usersMap.has(m.User.id)) {
+                    usersMap.set(m.User.id, { id: m.User.id, name: m.User.name, email: m.User.email, role: 'Documentation Team' });
+                }
+            }
          });
 
         return res.json(Array.from(usersMap.values()));
@@ -913,6 +1033,83 @@ export const editDocumentDetails = async (req: AuthenticatedRequest, res: Respon
         });
 
         return res.json({ message: 'Document updated successfully' });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+export const getDocumentUserAccess = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { documentId } = req.params;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+        const docDetails = await prisma.documentDetails.findUnique({
+            where: { id: Number(documentId) },
+            include: { documentUserAccesses: { include: { user: true } } }
+        });
+
+        if (!docDetails) return res.status(404).json({ message: 'Document not found' });
+
+        // Permission: Owner, Doc Head, Admin
+        const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
+        const isDocHead = docCommittee?.headUserId === userId;
+        const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+        
+        const firstDoc = await prisma.document.findFirst({ where: { docDetailsId: docDetails.id }, orderBy: { version: 'asc' } });
+        const isOwner = firstDoc?.generatedById === userId;
+
+        if (!isOwner && !isDocHead && !isAdmin) {
+             return res.status(403).json({ message: 'Forbidden' });
+        }
+
+        const accesses = docDetails.documentUserAccesses.map(a => ({
+            id: a.userId,
+            name: a.user.name,
+            email: a.user.email, 
+            role: 'User'
+        }));
+
+        return res.json(accesses);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+export const removeDocumentUserAccess = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { documentId, targetUserId } = req.params;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+        const docDetails = await prisma.documentDetails.findUnique({
+            where: { id: Number(documentId) }
+        });
+
+        if (!docDetails) return res.status(404).json({ message: 'Document not found' });
+
+        // Permission: Owner, Doc Head, Admin
+        const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
+        const isDocHead = docCommittee?.headUserId === userId;
+        const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+        
+        const firstDoc = await prisma.document.findFirst({ where: { docDetailsId: docDetails.id }, orderBy: { version: 'asc' } });
+        const isOwner = firstDoc?.generatedById === userId;
+
+        if (!isOwner && !isDocHead && !isAdmin) {
+             return res.status(403).json({ message: 'Forbidden' });
+        }
+
+        await prisma.documentUserAccess.deleteMany({
+            where: {
+                documentId: Number(documentId),
+                userId: Number(targetUserId)
+            }
+        });
+
+        return res.json({ message: 'Access removed successfully' });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: 'Internal Server Error' });
