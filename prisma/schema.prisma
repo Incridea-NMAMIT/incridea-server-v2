@@ -82,6 +82,7 @@ model User {
   AccommodationPayment AccommodationPayment[]
   AccommodationBooking AccommodationBooking[]
   documentUserAccesses DocumentUserAccess[]
+  sessions             Session[]
 
   @@index([collegeId])
   @@index([id])
@@ -98,6 +99,19 @@ model UserRole {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, role])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    Int
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
 }
 

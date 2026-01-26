@@ -141,6 +141,7 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
         email: m.User?.email ?? '',
         phoneNumber: m.User?.phoneNumber ?? '',
         status: m.status,
+        photo: m.photo,
       }))
 
       approvedMembers = approved.map((m) => ({
@@ -151,6 +152,7 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
         email: m.User?.email ?? '',
         phoneNumber: m.User?.phoneNumber ?? '',
         status: m.status,
+        photo: m.photo,
       }))
     }
 

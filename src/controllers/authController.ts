@@ -2,7 +2,6 @@ import type { Request, Response, NextFunction } from 'express'
 import {
   authenticateUser,
   createUserWithProfile,
-  generateToken,
   verifyOtpForUser,
   resendOtpForUser,
   getUserById,
@@ -14,6 +13,7 @@ import {
   verifyGoogleLogin,
   verifyGoogleRegistration,
   checkEmail,
+  generateTokenWithSession,
 } from '../services/authService'
 import { razorpay } from '../services/razorpay'
 import { getIO } from '../socket'
@@ -74,10 +74,20 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
         // Ideally should revert user creation or return error, but user creation is successful.
     }
 
-    const token = generateToken(user.id)
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+    const session = await prisma.session.create({
+        data: {
+            userId: user.id,
+            expiresAt: expiresAt,
+            userAgent: req.headers['user-agent'] || 'unknown',
+            ip: req.ip || 'unknown'
+        }
+    })
+
+    const token = generateTokenWithSession(user.id, session.id)
 
     res.cookie('token', token, {
-        httpOnly: false,
+        httpOnly: true, // Changed to true
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         domain: process.env.COOKIE_DOMAIN,
@@ -122,7 +132,17 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     const user = await authenticateUser(email, password)
     // Removed verification check to allow unverified login (frontend handles redirect)
     
-    const token = generateToken(user.id)
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+    const session = await prisma.session.create({
+        data: {
+            userId: user.id,
+            expiresAt: expiresAt,
+            userAgent: req.headers['user-agent'] || 'unknown',
+            ip: req.ip || 'unknown'
+        }
+    })
+
+    const token = generateTokenWithSession(user.id, session.id)
 
     const committee = await getUserCommitteeSnapshot(user.id)
 
@@ -135,7 +155,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     io.emit('auth:login', { userId: user.id })
 
     res.cookie('token', token, {
-       httpOnly: false,
+       httpOnly: true, // Changed to true
        secure: process.env.NODE_ENV === 'production',
        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
        domain: process.env.COOKIE_DOMAIN,
@@ -177,7 +197,17 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
   try {
     const { email, otp } = req.body as VerifyOtpInput
     const user = await verifyOtpForUser(email, otp)
-    const token = generateToken(user.id)
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+    const session = await prisma.session.create({
+        data: {
+            userId: user.id,
+            expiresAt: expiresAt,
+            userAgent: req.headers['user-agent'] || 'unknown',
+            ip: req.ip || 'unknown'
+        }
+    })
+
+    const token = generateTokenWithSession(user.id, session.id)
     const committee = await getUserCommitteeSnapshot(user.id)
 
     void logWebEvent({
@@ -189,7 +219,7 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
     io.emit('auth:login', { userId: user.id })
 
     res.cookie('token', token, {
-        httpOnly: false,
+        httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         domain: process.env.COOKIE_DOMAIN,
@@ -344,10 +374,15 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
     const token = req.cookies?.token
     if (token) {
         try {
-            const decoded = jwt.verify(token, env.jwtSecret) as jwt.JwtPayload
-            const userId = decoded.sub ? parseInt(decoded.sub, 10) : null
+            const decoded = jwt.verify(token, env.jwtSecret) as jwt.JwtPayload & { sessionId?: string }
+            const userId = decoded.sub ? parseInt(decoded.sub as string, 10) : null
             if (userId) {
                 io.emit('auth:logout', { userId })
+            }
+            if (decoded.sessionId) {
+                await prisma.session.delete({ where: { id: decoded.sessionId } }).catch(err => {
+                    console.error("Failed to delete session on logout", err)
+                })
             }
         } catch (err) {
             console.error('Logout: Failed to verify token for event emission', err)
@@ -356,7 +391,7 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
     }
 
     res.clearCookie('token', {
-      httpOnly: false,
+      httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       domain: process.env.COOKIE_DOMAIN,
@@ -392,7 +427,16 @@ export async function googleLoginHandler(req: Request, res: Response, next: Next
     try {
         const { code } = req.body
         const user = await verifyGoogleLogin(code)
-        const token = generateToken(user.id)
+        const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+        const session = await prisma.session.create({
+            data: {
+                userId: user.id,
+                expiresAt: expiresAt,
+                userAgent: req.headers['user-agent'] || 'unknown',
+                ip: req.ip || 'unknown'
+            }
+        })
+        const token = generateTokenWithSession(user.id, session.id)
         const committee = await getUserCommitteeSnapshot(user.id)
         
         void logWebEvent({
@@ -404,7 +448,7 @@ export async function googleLoginHandler(req: Request, res: Response, next: Next
         io.emit('auth:login', { userId: user.id })
 
         res.cookie('token', token, {
-            httpOnly: false,
+            httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
             domain: process.env.COOKIE_DOMAIN,

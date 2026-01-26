@@ -31,6 +31,16 @@ export function generateToken(userId: number): string {
   return jwt.sign(payload, secret, options)
 }
 
+export function generateTokenWithSession(userId: number, sessionId: string): string {
+    const secret: jwt.Secret = env.jwtSecret
+    const payload: jwt.JwtPayload = { sub: String(userId), sessionId }
+    const options: jwt.SignOptions = {
+      expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'],
+    }
+  
+    return jwt.sign(payload, secret, options)
+  }
+
 async function ensureNmamitCollege() {
   await prisma.college.upsert({
     where: { id: 1 },
@@ -399,7 +409,7 @@ export async function authenticateUser(email: string, password: string) {
     },
   })
   if (!user) {
-    throw new AppError('Invalid credentials', 401)
+    throw new AppError('User not found', 404)
   }
 
   const isValid = await verifyPassword(password, user.password)
