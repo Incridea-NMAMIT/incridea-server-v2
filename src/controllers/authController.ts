@@ -100,7 +100,7 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
 
     return res.status(201).json({
       message: 'User saved. Please verify your email with the OTP sent.',
-      token,
+      // token, // Token is now in cookie only
       paymentOrder: paymentOrderDetails,
       user: {
         id: user.id,
@@ -171,7 +171,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
     return res.status(200).json({
       message: 'Logged in',
-      token,
+      // token, // Token is now in cookie only
       user: {
         id: user.id,
         name: user.name,
@@ -238,7 +238,7 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
 
     return res.status(200).json({
       message: 'Email verified successfully',
-      token,
+      // token, // Token is now in cookie only
       user: {
         id: user.id,
         name: user.name,
@@ -473,7 +473,7 @@ export async function googleLoginHandler(req: Request, res: Response, next: Next
 
        return res.status(200).json({
           message: 'Logged in',
-          token,
+          // token, // Token is now in cookie only
           user: {
             id: user.id,
             name: user.name,

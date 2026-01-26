@@ -10,17 +10,11 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export async function authenticateJWT(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const token = req.cookies?.token
-
-  // Removed fallback to Authorization header to enforce cookie usage as per plan
-  // OR keep it but prioritize cookie. Plan said "cookie will be HttpOnly".
-  // If we want to support mobile apps later, header might be useful, but for now enforcing cookie ensures logic consistency with the "not in sessionstorage" requirement.
-  // However, existing code had fallback. I will keep fallback but valid session check is mandatory.
-
-  const tokenToVerify = token || req.headers.authorization?.split(' ')[1]
+  // Strictly enforce cookie usage
+  const tokenToVerify = req.cookies?.token
 
   if (!tokenToVerify) {
-    return res.status(401).json({ message: 'Unauthorized' })
+    return res.status(401).json({ message: 'Unauthorized: No session cookie' })
   }
 
   try {
