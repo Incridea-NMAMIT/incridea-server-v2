@@ -1,12 +1,8 @@
 import os
 import sys
 import json
-import subprocess
-import requests
-import psycopg2
-from datetime import datetime
-from decimal import Decimal
 import argparse
+from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -17,6 +13,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.graphics.barcode import code128
+from reportlab.graphics import renderPDF
+from reportlab.graphics.shapes import Drawing
 from io import BytesIO
 
 # Load environment variables
@@ -24,25 +23,25 @@ env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
 # Configuration
-DATABASE_URL = os.getenv("DATABASE_URL")
-UPLOADTHING_TOKEN = os.getenv("UPLOADTHING_TOKEN")
 SERVER_URL = os.getenv("SERVER_URL") or "http://localhost:4000"
 
 # Paths
 ASSETS_DIR = Path(__file__).parent.parent / 'src' / 'assets'
-TEMPLATE_PATH = ASSETS_DIR / 'receipt_template.png'
+TEMPLATE_PATH = ASSETS_DIR / 'Receipt-Template.png'
 LOG_FILE = Path(__file__).parent.parent / 'logs' / 'receipt_generation_py.log'
+GENERATED_DIR = ASSETS_DIR / 'generated_receipts'
 
 def log(message):
     timestamp = datetime.now().isoformat()
     msg = f"[{timestamp}] {message}"
-    print(msg)
+    # Use stderr for logs so stdout is clean for file path
+    print(msg, file=sys.stderr)
     try:
         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
         with open(LOG_FILE, "a") as f:
             f.write(msg + "\n")
     except Exception as e:
-        print(f"Failed to log to file: {e}")
+        print(f"Failed to log to file: {e}", file=sys.stderr)
 
 def number_to_words(amount):
     a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen ']
@@ -92,49 +91,76 @@ def create_pdf(order_data, user_data):
     buffer = BytesIO()
     
     # Original template dimensions from TS file
-    template_width = 3720
-    template_height = 2631
+    template_width = 2480
+    template_height = 3100
     
     c = canvas.Canvas(buffer, pagesize=(template_width, template_height))
     
     # Draw Template
+    log("Drawing template...")
     c.drawImage(str(TEMPLATE_PATH), 0, 0, width=template_width, height=template_height)
     
     # Settings (matching TS)
-    font_size = 56
+    font_size = 36
     c.setFont("Helvetica", font_size)
     c.setFillColorRGB(0, 0, 0)
     
     # Section 1: User Details
-    user_details_left_margin = 880
-    user_details_top_start = template_height - 635
-    user_details_line_spacing = 128
-    
-    payment_details_left_margin = 880
-    payment_details_top_start = template_height - 1125
-    payment_details_line_spacing = 132
-    
-    amount_details_left_margin = 880
-    amount_details_top_start = template_height - 1770
-    amount_details_line_spacing = 180
+    user_details_left_margin = 620
+    user_details_top_start = template_height - 821
+    user_details_line_spacing = 89 # Reduced spacing for smaller font
     
     # Draw User Details
     c.drawString(user_details_left_margin, user_details_top_start, user_data['name'])
     c.drawString(user_details_left_margin, user_details_top_start - user_details_line_spacing, user_data['email'])
     c.drawString(user_details_left_margin, user_details_top_start - (user_details_line_spacing * 2), user_data['phoneNumber'])
+    
+    # Add College
+    college = user_data.get('college', '-')
+    c.drawString(user_details_left_margin, user_details_top_start - (user_details_line_spacing * 3), str(college))
+    
+    # Add PID (Separate Position)
+    pid_top_start = template_height - 2966 # Adjustable
+    pid_left_margin = 300
+    pid = user_data.get('pid', '-')
+    c.drawString(pid_left_margin, pid_top_start, f"{pid}")
 
+    # Section 2: Payment Details (Adjusted Start)
+    payment_details_left_margin = 620
+    payment_details_top_start = template_height - 1323 # Adjusted to avoid overlap
+    payment_details_line_spacing = 88 # Reduced spacing for smaller font
+    
     # Determine Payment Type String
     payment_type_str = 'Fest Registration'
     if order_data['type'] == 'ACC_REGISTRATION':
-        payment_type_str = 'Accommodation Registration'
+        payment_type_str = 'Accomodation Fee Payment'
     elif order_data['type'] == 'EVENT_REGISTRATION':
         payment_type_str = 'Event Registration'
         
+    # 1. Payment Type
     c.drawString(payment_details_left_margin, payment_details_top_start, payment_type_str)
-    c.drawString(payment_details_left_margin, payment_details_top_start - payment_details_line_spacing, order_data['orderId'])
+
+    # 2. Date of Payment
+    payment_date = order_data.get('updatedAt')
+    if payment_date:
+        if isinstance(payment_date, str):
+            try:
+                # Handle ISO format "2023-01-01T12:00:00.000Z"
+                payment_date = datetime.fromisoformat(payment_date.replace('Z', '+00:00'))
+            except:
+                pass
+        if isinstance(payment_date, datetime):
+            payment_date_str = payment_date.strftime("%d/%m/%Y")
+        else:
+             payment_date_str = str(payment_date)
+    else:
+        payment_date_str = '-'
+    c.drawString(payment_details_left_margin, payment_details_top_start - payment_details_line_spacing, f"{payment_date_str}")
+
+    # 3. Order ID
+    c.drawString(payment_details_left_margin, payment_details_top_start - (payment_details_line_spacing * 2), order_data['orderId'])
 
     payment_data = order_data.get('paymentData', {}) or {}
-    # Handle if paymentData is string (JSON) or dict
     if isinstance(payment_data, str):
         try:
             payment_data = json.loads(payment_data)
@@ -142,14 +168,29 @@ def create_pdf(order_data, user_data):
              payment_data = {}
              
     payment_id = payment_data.get('id') or payment_data.get('gatewayPaymentId') or '-'
-    c.drawString(payment_details_left_margin, payment_details_top_start - (payment_details_line_spacing * 2), str(payment_id))
+    
+    # 4. Payment ID
+    c.drawString(payment_details_left_margin, payment_details_top_start - (payment_details_line_spacing * 3), str(payment_id))
     
     method = payment_data.get('method') or '-'
-    c.drawString(payment_details_left_margin, payment_details_top_start - (payment_details_line_spacing * 3), str(method).upper())
+    
+    # 5. Payment Method
+    c.drawString(payment_details_left_margin, payment_details_top_start - (payment_details_line_spacing * 4), str(method).upper())
+    
+    # Receipt Generation Details (Separate Position)
+    gen_date_left_margin = 1650
+    gen_date_top_start = template_height - 535 # Adjustable
+    receipt_date = datetime.now().strftime("%d/%m/%Y")
+    c.drawString(gen_date_left_margin, gen_date_top_start, f"{receipt_date}")
 
     # Amount
-    c.drawString(amount_details_left_margin, amount_details_top_start, f"Rs. {order_data['collectedAmount']}/-")
-    words = number_to_words(order_data['collectedAmount']) + ' Only'
+    amount = int(order_data['collectedAmount'])
+    amount_details_left_margin = 620
+    amount_details_top_start = template_height - 1900
+    amount_details_line_spacing = 169
+    
+    c.drawString(amount_details_left_margin, amount_details_top_start, f"Rs. {amount}/-")
+    words = number_to_words(amount) + ' Only'
     c.drawString(amount_details_left_margin, amount_details_top_start - amount_details_line_spacing - 10, words)
 
     # QR Code
@@ -158,139 +199,81 @@ def create_pdf(order_data, user_data):
     log(f"Generated QR Link: {qr_content}")
     
     qr_img = generate_qr_code(qr_content)
+    log("QR code image generated in memory.")
     qr_reader = ImageReader(qr_img)
     
-    qr_code_x = 2855
-    qr_code_y = 1315
-    qr_code_size = 500
+    # Updated coordinates for 2480 width
+    qr_code_x = 1896
+    qr_code_y = 1750
+    qr_code_size = 350
     
+    log(f"Drawing QR code at {qr_code_x}, {qr_code_y}")
     c.drawImage(qr_reader, qr_code_x, qr_code_y, width=qr_code_size, height=qr_code_size)
     
+    # Barcode for PID (Separate Position)
+    barcode_x = 1850
+    barcode_y = 98
+    
+    if pid and pid != '-':
+        log(f"Drawing Barcode for PID: {pid}")
+        barcode = code128.Code128(pid, barHeight=80, barWidth=2.5) # Adjusted size
+        barcode.drawOn(c, barcode_x, barcode_y)
+
+    log("Saving PDF canvas...")
     c.save()
+    log("PDF canvas saved.")
     buffer.seek(0)
     return buffer
 
-def upload_to_uploadthing(file_buffer, filename):
-    try:
-        # Construct command to run the TS helper
-        script_path = ASSETS_DIR.parent.parent / 'scripts' / 'upload_helper.ts'
-        
-        log(f"Initiating upload via Node.js helper for {filename}...")
-        
-        if not os.path.exists(script_path):
-             log(f"Helper script not found at {script_path}")
-             return None
-
-        # Use npx to run ts-node.
-        cwd = ASSETS_DIR.parent.parent
-        npx_cmd = 'npx.cmd' if os.name == 'nt' else 'npx'
-        
-        # Pass filename as argument, content via stdin
-        result = subprocess.run(
-            [npx_cmd, 'ts-node', str(script_path), filename],
-            cwd=cwd,
-            input=file_buffer.getvalue(), # Pass PDF bytes directly
-            capture_output=True, # Captures stdout/stderr as bytes (since text is not True)
-            env=os.environ
-        )
-        
-        if result.returncode == 0:
-            # Parse output line by line to find the URL (ignoring dotenv logs)
-            output_lines = result.stdout.decode('utf-8').strip().split('\n')
-            url = None
-            for line in output_lines:
-                clean_line = line.strip()
-                if clean_line.startswith('https://'):
-                    url = clean_line
-                    break
-            
-            if url:
-                log(f"Upload successful. URL: {url}")
-                return url
-            else:
-                log(f"Upload finished but no URL found in output: {output_lines}")
-                return None
-        else:
-            stderr_text = result.stderr.decode('utf-8')
-            log(f"Upload failed. Stderr: {stderr_text}")
-            return None
-
-    except Exception as e:
-        log(f"Error executing upload helper: {e}")
-        return None
-
 def main():
-    parser = argparse.ArgumentParser(description='Generate Receipt')
-    parser.add_argument('order_id', help='Order ID to generate receipt for')
+    parser = argparse.ArgumentParser(description='Generate Receipt from JSON')
+    parser.add_argument('input', help='JSON string or path to JSON file containing order and user data')
     args = parser.parse_args()
     
-    order_id = args.order_id
-    log(f"Starting receipt generation for {order_id}")
-    
-    params = {
-        "host": "aws-0-1.db.pool.vercel-storage.com",
-        "dbname": "neondb",
-        "user": "default",
-        # Parse DATABASE_URL for these if needed, or rely on libpq handling the connection string
-    }
-    
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
+        input_data = args.input
+        if os.path.exists(input_data):
+            try:
+                with open(input_data, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception as e:
+                log(f"Failed to read JSON file: {e}")
+                sys.exit(1)
+        else:
+            data = json.loads(input_data)
+            
+        order_data = data.get('order_data')
+        user_data = data.get('user_data')
         
-        # Fetch Data
-        query = """
-            SELECT po."orderId", po."collectedAmount", po."type", po."paymentDataJson", 
-                   u."name", u."email", u."phoneNumber" 
-            FROM "PaymentOrder" po 
-            JOIN "User" u ON po."userId" = u."id" 
-            WHERE po."orderId" = %s
-        """
-        cur.execute(query, (order_id,))
-        row = cur.fetchone()
-        
-        if not row:
-            log("Order not found")
-            return
-
-        order_data = {
-            "orderId": row[0],
-            "collectedAmount": row[1],
-            "type": row[2],
-            "paymentData": row[3]
-        }
-        
-        user_data = {
-            "name": row[4],
-            "email": row[5],
-            "phoneNumber": row[6]
-        }
+        if not order_data or not user_data:
+            log("Invalid JSON data: Missing order_data or user_data")
+            sys.exit(1)
+            
+        log(f"Starting receipt generation for {order_data.get('orderId')}")
         
         # Generate PDF
         pdf_buffer = create_pdf(order_data, user_data)
         
-        # Upload
-        filename = f"receipt_{order_id}.pdf"
-        url = upload_to_uploadthing(pdf_buffer, filename)
+        # Save to file
+        os.makedirs(GENERATED_DIR, exist_ok=True)
+        filename = f"receipt_{order_data.get('orderId')}.pdf"
+        file_path = GENERATED_DIR / filename
         
-        if url:
-            # Update DB
-            update_query = """
-                UPDATE "PaymentOrder" 
-                SET "receipt" = %s 
-                WHERE "orderId" = %s
-            """
-            cur.execute(update_query, (url, order_id))
-            conn.commit()
-            log(f"Database updated with receipt URL: {url}")
-        else:
-            log("Upload failed or skipped, DB not updated.")
+        with open(file_path, "wb") as f:
+            f.write(pdf_buffer.getvalue())
+            
+        # Output ONLY the file path to stdout
+        print(str(file_path.absolute()))
+        log(f"Receipt generated at: {file_path}")
 
-        cur.close()
-        conn.close()
-
+    except json.JSONDecodeError:
+        log("Failed to decode JSON input")
+        sys.exit(1)
     except Exception as e:
         log(f"Error: {e}")
+        # Print error details to stderr
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":

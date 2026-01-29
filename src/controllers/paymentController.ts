@@ -8,7 +8,9 @@ import { listVariables } from '../services/adminService'
 import { generatePID } from '../services/pidService'
 
 import { setPaymentStep, getPaymentStep, clearPaymentStep } from '../utils/paymentStatusStore'
+
 import { getIO } from '../socket'
+import { addReceiptJob } from '../utils/queue'
 
 export async function initiatePayment(req: Request, res: Response) {
   try {
@@ -84,6 +86,7 @@ export async function initiatePayment(req: Request, res: Response) {
         }
     }
 
+    console.log('Creating Razorpay Order with options:', JSON.stringify(orderOptions, null, 2))
     const order = await razorpay.orders.create(orderOptions)
 
     if (!order) {
@@ -282,6 +285,31 @@ export async function verifyPayment(req: Request, res: Response) {
       const pid = await prisma.pID.findFirst({
           where: { userId: paymentOrder.userId }
       })
+
+      // RETRY LOGIC: If receipt is missing, trigger generation again
+      if (!paymentOrder.receipt) {
+          console.warn(`Payment ${paymentOrder.orderId} is SUCCESS but missing receipt. Retrying generation...`);
+          // Note: We need payment entity. Since it's success, paymentDataJson should have it.
+          const paymentEntity = paymentOrder.paymentDataJson; 
+          if (paymentEntity) {
+              const paymentData = createPaymentDataFromEntity(paymentEntity, paymentOrder);
+              // Trigger async to not block response? Or await? 
+              // Awaiting is safer to ensure it gets queued.
+              try {
+                  await processSuccessfulPayment(paymentOrder, paymentEntity, paymentData);
+              } catch (e) {
+                  console.error("Retry generation failed:", e);
+              }
+          } else {
+              console.error("Refetching payment from Razorpay for missing receipt...");
+               const payment = await razorpay.payments.fetch(razorpay_payment_id)
+               if(payment) {
+                   const paymentData = createPaymentDataFromEntity(payment, paymentOrder);
+                   await processSuccessfulPayment(paymentOrder, payment, paymentData);
+               }
+          }
+      }
+
       return res.status(200).json({ 
           status: 'success', 
           message: 'Payment verified successfully',
@@ -377,6 +405,10 @@ export async function getMyPaymentStatus(req: Request, res: Response) {
     }
 }
 
+import redis from '../services/redis'
+
+// ... (existing imports)
+
 // Helper to process successful payment (update DB, generate PID)
 async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, paymentData: any) {
     const io = getIO()
@@ -400,19 +432,25 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
         } as any, // CASTING AS ANY
         })
     });
-    
-    // Notify Receipt Listener (Trigger Receipt Generation)
-    try {
-        await prisma.$executeRawUnsafe(`NOTIFY payment_success, '${paymentOrder.orderId}'`);
-        console.log(`[PaymentController] Sent NOTIFY payment_success for ${paymentOrder.orderId}`);
-    } catch (e) {
-        console.error('Failed to notify payment_success:', e);
-    }
-    
+
     console.log(`Payment successful for order ${paymentOrder.orderId}, User ID: ${paymentOrder.userId}`)
 
-    // Emit Payment Success
+    // Emit Payment Success via Socket
     io.to(`user-${paymentOrder.userId}`).emit('payment_success')
+
+    // Emit Payment Success Event to Redis Stream
+    try {
+        await redis.xadd('payment:events', '*', 
+            'orderId', paymentOrder.orderId,
+            'userId', paymentOrder.userId,
+            'paymentId', paymentEntity.id || paymentOrder.paymentData?.gatewayPaymentId || '', 
+            'type', paymentOrder.type,
+            'timestamp', new Date().toISOString()
+        )
+        console.log(`Emitted payment.success event for order ${paymentOrder.orderId}`)
+    } catch (error) {
+        console.error('Failed to emit payment.success event:', error)
+    }
 
     // Refetch the latest PaymentOrder to ensure we have the committed status and check for existing receipt
     const freshPaymentOrder = await prisma.paymentOrder.findUnique({
@@ -429,19 +467,16 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
         try {
             console.log(`Processing FEST_REGISTRATION for User ID: ${freshPaymentOrder.userId}, Order ID: ${freshPaymentOrder.orderId}`);
 
-            const user = await prisma.user.findUnique({ where: { id: freshPaymentOrder.userId } })
+            const user = await prisma.user.findUnique({ 
+                where: { id: freshPaymentOrder.userId },
+                include: { College: true }
+            })
             
             if (!user) {
                  console.error('User not found for receipt and PID generation:', freshPaymentOrder.userId);
                  io.to(`user-${freshPaymentOrder.userId}`).emit('payment_failed')
                  return null;
             }
-
-            // 1. Generate Receipt - REMOVED per user request
-            // Skipping directly to PID Generation
-
-            // 3. Generate PID
-            console.log(`Generating PID for User ID: ${freshPaymentOrder.userId}...`);
 
             // 3. Generate PID
             console.log(`Generating PID for User ID: ${freshPaymentOrder.userId}...`);
@@ -452,23 +487,39 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
             const pidContext = await generatePID(freshPaymentOrder.userId, freshPaymentOrder.orderId)
             console.log(`PID generated successfully: ${pidContext.pidCode}`)
             
-            // Notify Receipt Listener (Trigger Welcome Email)
-            try {
-                await prisma.$executeRawUnsafe(`NOTIFY pid_generated, '${freshPaymentOrder.userId}'`);
-                console.log(`[PaymentController] Sent NOTIFY pid_generated for User ${freshPaymentOrder.userId}`);
-            } catch (e) {
-                 console.error('Failed to notify pid_generated:', e);
+            // 4. Queue Receipt Generation
+            console.log(`Queueing Receipt for Order ID: ${freshPaymentOrder.orderId}...`)
+            io.to(`user-${freshPaymentOrder.userId}`).emit('generating_receipt') 
+            
+            // Prepare data for receipt generator
+            const orderDataForReceipt = {
+                orderId: freshPaymentOrder.orderId,
+                type: freshPaymentOrder.type,
+                updatedAt: freshPaymentOrder.updatedAt,
+                collectedAmount: freshPaymentOrder.collectedAmount,
+                paymentData: freshPaymentOrder.paymentDataJson,
             }
             
+            const userDataForReceipt = {
+                name: user.name,
+                email: user.email,
+                phoneNumber: user.phoneNumber,
+                college: user.College?.name,
+                pid: pidContext.pidCode 
+            }
+
+            // Add to Queue
+            console.log(`Adding receipt job to queue for ${freshPaymentOrder.orderId}`);
+            await addReceiptJob({
+                orderData: orderDataForReceipt,
+                userData: userDataForReceipt,
+                userId: freshPaymentOrder.userId
+            })
+
             setPaymentStep(freshPaymentOrder.orderId, 'COMPLETED')
             
-            // Emit PID Generated
+            // Emit PID Generated (and implicit receipt completion)
             io.to(`user-${freshPaymentOrder.userId}`).emit('pid_generated', { pid: pidContext.pidCode })
-
-            // Send Welcome Email - REMOVED: Now handled by Postgres Listener
-            // const isAlumni = user.category === Category.ALUMNI;
-            // const emailHtml = getWelcomeEmailHtml(user.name, isAlumni ? undefined : pidContext.pidCode);
-            // await sendEmail(user.email, 'Welcome to Incridea!', 'Welcome to Incridea!', emailHtml);
 
             // Optional: Schedule cleanup 
             setTimeout(() => clearPaymentStep(freshPaymentOrder.orderId), 60000) // Clear after 1 minute
@@ -476,7 +527,7 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
             return pidContext.pidCode
 
         } catch (error) {
-            console.error('Error during post-payment processing (PID):', error)
+            console.error('Error during post-payment processing (PID/Receipt):', error)
             io.to(`user-${freshPaymentOrder.userId}`).emit('payment_failed')
             return null
         }

@@ -45,7 +45,7 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
       include: {
         headUser: { select: userSummarySelect },
         coHeadUser: { select: userSummarySelect },
-        _count: { select: { Members: true } },
+        _count: { select: { Members: { where: { status: CommitteeMembershipStatus.APPROVED } } } },
       },
     })
 

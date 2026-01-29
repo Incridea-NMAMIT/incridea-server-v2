@@ -80,7 +80,14 @@ app.use('/api/payment', paymentRoutes)
 app.use('/api/uploadthing', uploadthingHandler)
 app.use('/api/documents', documentRoutes)
 app.use('/api/accommodation', accommodationRoutes)
+import internalRoutes from './routes/internalRoutes'
+
+// ... (existing imports)
+
+app.use('/api/accommodation', accommodationRoutes)
 app.use('/api/stats', statsRoutes)
+app.use('/api/internal', internalRoutes)
+
 
 
 app.use((_req, res) => {
