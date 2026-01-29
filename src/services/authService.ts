@@ -49,7 +49,6 @@ async function ensureNmamitCollege() {
       id: 1,
 
       name: 'NMAMIT',
-      details: 'Default NMAMIT college record',
       type: CollegeType.ENGINEERING,
     },
   })

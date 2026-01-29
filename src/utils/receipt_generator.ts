@@ -196,8 +196,6 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
   let paymentTypeStr = 'Fest Registration';
   if (orderData.type === 'ACC_REGISTRATION') {
     paymentTypeStr = 'Accomodation Fee Payment';
-  } else if (orderData.type === 'EVENT_REGISTRATION') {
-    paymentTypeStr = 'Event Registration';
   }
   drawText(paymentTypeStr, paymentDetailsLeftMargin, paymentDetailsTopStart);
 

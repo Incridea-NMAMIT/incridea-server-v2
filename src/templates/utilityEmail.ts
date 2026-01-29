@@ -27,8 +27,8 @@ export const getUtilityEmailHtml = (content: string): string => {
               </td>
             </tr>
             <tr>
-              <td style="background-color: #f8fafc; padding: 20px 32px; text-align: center; font-size: 12px; color: #64748b;">
-                <p style="margin: 0;">Team Incridea</p>
+              <td style="background-color: linear-gradient(135deg, #000000, #1a1a1a); padding: 20px 32px; text-align: center; font-size: 12px; color: #e2e8f0;">
+                <p style="margin: 0; ">Team Incridea</p>
               </td>
             </tr>
           </table>

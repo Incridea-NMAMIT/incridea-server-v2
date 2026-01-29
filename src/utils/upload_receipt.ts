@@ -24,7 +24,7 @@ export async function uploadReceipt(fileInput: string | { buffer: Buffer, name: 
         const fileName = path.basename(filePath);
         file = new File([fileBuffer], fileName);
     } else {
-        file = new File([fileInput.buffer], fileInput.name);
+        file = new File([fileInput.buffer as any], fileInput.name);
     }
 
     const response = await utapi.uploadFiles([file]);

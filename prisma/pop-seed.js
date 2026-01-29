@@ -18,16 +18,16 @@ const BRANCH_NAMES = [
 
 async function ensureCollege() {
     console.log('Ensuring College exists...')
-    await prisma.college.upsert({
-        where: { id: 1 },
-        update: {},
-        create: {
-            id: 1,
+    const existingCollege = await prisma.college.findFirst()
+    
+    if (!existingCollege) {
+      await prisma.college.create({
+        data: {
             name: 'NMAM Institute of Technology',
-            details: 'Nitte, Karkala',
             type: CollegeType.ENGINEERING
         }
-    })
+      })
+    }
 }
 
 async function ensureBranches() {
@@ -42,6 +42,10 @@ async function ensureBranches() {
 
 async function ensureTechUsers() {
   console.log('Creating/Updating 50 Tech Users...')
+  
+  const college = await prisma.college.findFirst()
+  if (!college) throw new Error("College not found")
+  
   for (let i = 1; i <= 50; i++) {
     const email = `tech${i}@tech.in`
     const password = `tech${i}`
@@ -58,7 +62,7 @@ async function ensureTechUsers() {
         email,
         password: hashedPassword,
         phoneNumber: `9${String(i).padStart(9, '0')}`,
-        collegeId: 1, // Assumes NMAMIT (id: 1) exists 
+        collegeId: college.id, 
         isVerified: true,
       },
     })
@@ -79,8 +83,6 @@ async function ensureDummyEvents() {
 
   for (let i = 1; i <= 50; i++) {
     const eventName = `Event ${i}`
-    const isPaid = i % 2 === 0 // Even numbered events are paid
-    const fees = isPaid ? 250 : 0
     const branch = branches[i % branches.length]
 
     const existingEvent = await prisma.event.findFirst({ where: { name: eventName } })
@@ -88,7 +90,6 @@ async function ensureDummyEvents() {
     const eventData = {
         name: eventName,
         description: `This is a description for ${eventName}.`,
-        fees,
         eventType: EVENT_TYPES[i % EVENT_TYPES.length],
         category: EVENT_CATEGORIES[i % EVENT_CATEGORIES.length],
         tier: EventTier.GOLD,

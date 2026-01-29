@@ -542,7 +542,6 @@ function createPaymentDataFromEntity(data: any, order: any): any {
     let purpose: any = PaymentPurpose.FEST_REGISTRATION; // Default based on user sample
     if (data.notes && data.notes.type) {
         if (data.notes.type === 'FEST_REGISTRATION') purpose = PaymentPurpose.FEST_REGISTRATION;
-        else if (data.notes.type === 'EVENT_REGISTRATION') purpose = PaymentPurpose.EVENT_REGISTRATION;
         else if (data.notes.type === 'ACCOMMODATION' || data.notes.type === 'ACC_REGISTRATION') purpose = PaymentPurpose.ACCOMMODATION;
         else if (data.notes.type === 'MERCH') purpose = PaymentPurpose.MERCH;
     } else if (order.type === 'FEST_REGISTRATION') {

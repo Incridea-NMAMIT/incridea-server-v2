@@ -9,7 +9,6 @@ export async function listColleges(_req: Request, res: Response, next: NextFunct
 
         id: true,
         name: true,
-        details: true,
         type: true,
       },
     })

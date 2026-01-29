@@ -81,7 +81,6 @@ export async function listOrganiserEvents(req: AuthenticatedRequest, res: Respon
         eventType: true,
         category: true,
         venue: true,
-        fees: true,
         published: true,
         _count: {
           select: {

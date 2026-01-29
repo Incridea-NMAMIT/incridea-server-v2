@@ -140,6 +140,12 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
       return res.status(400).json({ message: 'Accommodation full for this gender' })
     }
 
+    // Get PID for user
+    const pid = await prisma.pID.findUnique({ where: { userId } })
+    if (!pid) {
+        return res.status(400).json({ message: 'PID not found for user. Please register for the fest first.' })
+    }
+
     // Create Booking and Payment Order
     const booking = await prisma.$transaction(async (tx) => {
        const amount = 200 
@@ -173,7 +179,7 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
 
        const booking = await tx.accommodationBooking.create({
          data: {
-           userId,
+           pidId: pid.id,
            accommodationType: body.gender,
            checkIn: new Date(body.checkIn),
            checkOut: new Date(body.checkOut),
@@ -192,125 +198,6 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
   }
 }
 
-// Create Booking (Team)
-export async function createTeamBooking(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  try {
-    const userId = req.user?.id
-    if (!userId) return res.status(401).json({ message: 'Unauthorized' })
-
-    const schema = z.object({
-      checkIn: z.string().datetime(),
-      checkOut: z.string().datetime(),
-      members: z.array(z.object({
-        name: z.string(),
-        email: z.string().email(),
-        phoneNumber: z.string(),
-        gender: z.enum([Gender.MALE, Gender.FEMALE]),
-        idCard: z.string().url(),
-        code: z.string().optional() // QR code scan result (User ID or PID code)
-      }))
-    })
-
-    const body = schema.parse(req.body)
-
-    // Validate request size
-    if (body.members.length === 0) return res.status(400).json({ message: 'No members provided' })
-
-    // Check availability for all members
-    const boysNeeded = body.members.filter(m => m.gender === Gender.MALE).length
-    const girlsNeeded = body.members.filter(m => m.gender === Gender.FEMALE).length
-
-    const boysVar = await prisma.accommodationRequests.findUnique({ where: { key: 'BoysAccCount' } })
-    const girlsVar = await prisma.accommodationRequests.findUnique({ where: { key: 'GirlsAccCount' } })
-    
-    const boysTotal = boysVar?.value || 0
-    const girlsTotal = girlsVar?.value || 0
-
-    const boysBooked = await prisma.accommodationBooking.count({
-      where: {
-        accommodationType: Gender.MALE,
-        status: { in: [AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.PENDING] }
-      }
-    })
-
-    const girlsBooked = await prisma.accommodationBooking.count({
-      where: {
-        accommodationType: Gender.FEMALE,
-        status: { in: [AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.PENDING] }
-      }
-    })
-
-    if (boysNeeded > 0 && (boysBooked + boysNeeded > boysTotal)) {
-      return res.status(400).json({ message: 'Not enough male accommodation available' })
-    }
-
-    if (girlsNeeded > 0 && (girlsBooked + girlsNeeded > girlsTotal)) {
-      return res.status(400).json({ message: 'Not enough female accommodation available' })
-    }
-
-    // Create bookings transaction
-    const result = await prisma.$transaction(async (tx) => {
-      const amount = 200 * body.members.length
-      const amountInRupees = Math.ceil(amount / (1 - 0.0236))
-      const amountInPaisa = amountInRupees * 100
-
-      const order = await razorpay.orders.create({
-           amount: amountInPaisa,
-           currency: 'INR',
-           receipt: `acc_team_${userId}_${Date.now()}`,
-           notes: {
-               type: PaymentType.ACC_REGISTRATION,
-               userId: String(userId),
-               bookingType: 'TEAM'
-           }
-       })
-
-      if (!order) throw new Error('Failed to create payment order')
-      const orderId = order.id
-
-      const payment = await tx.accommodationPayment.create({
-        data: {
-          orderId,
-          amount: amountInRupees,
-          userId,
-          status: Status.PENDING,
-          type: PaymentType.ACC_REGISTRATION
-        }
-      })
-
-      const bookings = []
-      for (const member of body.members) {
-        // Try to link to existing user if code provided
-        // Logic to find user by code (PID or ID) would go here if needed
-        // For now, we might just store the booking linked to the primary user or create a "guest" record?
-        // The prompt says "scanned QR of other team members", implying they are users efficiently.
-        // Assuming 'code' maps to a User.
-        
-        // Simpler approach for now: Link all to the creating user, but store details?
-        // OR: The prompt implies they are registered students.
-        // If code is provided, verify user.
-        
-        const booking = await tx.accommodationBooking.create({
-          data: {
-            userId: userId, // For now, link to booker. ideally link to actual user if found
-            accommodationType: member.gender,
-            checkIn: new Date(body.checkIn),
-            checkOut: new Date(body.checkOut),
-            idCard: member.idCard,
-            status: AccommodationBookingStatus.PENDING,
-            paymentId: payment.id
-          }
-        })
-        bookings.push(booking)
-      }
-      return { payment: { ...payment, key: process.env.RAZORPAY_KEY_ID, currency: order.currency, amount: order.amount }, bookings }
-    })
-
-    return res.json(result)
-  } catch (error) {
-    return next(error)
-  }
-}
 
 // Get Bookings (Admin)
 export async function getBookings(req: Request, res: Response, next: NextFunction) {
@@ -322,20 +209,26 @@ export async function getBookings(req: Request, res: Response, next: NextFunctio
     if (status) where.status = status
     if (gender) where.accommodationType = gender
     if (search) {
-      where.User = {
-        OR: [
-          { name: { contains: String(search), mode: 'insensitive' } },
-          { email: { contains: String(search), mode: 'insensitive' } },
-          { phoneNumber: { contains: String(search), mode: 'insensitive' } }
-        ]
+      where.PID = {
+        User: {
+          OR: [
+            { name: { contains: String(search), mode: 'insensitive' } },
+            { email: { contains: String(search), mode: 'insensitive' } },
+            { phoneNumber: { contains: String(search), mode: 'insensitive' } }
+          ]
+        }
       }
     }
 
     const bookings = await prisma.accommodationBooking.findMany({
       where,
       include: {
-        User: {
-          select: { name: true, email: true, phoneNumber: true, collegeId: true, College: { select: { name: true } } }
+        PID: {
+            include: {
+                User: {
+                    select: { name: true, email: true, phoneNumber: true, collegeId: true, College: { select: { name: true } } }
+                }
+            }
         },
         Payment: true
       },

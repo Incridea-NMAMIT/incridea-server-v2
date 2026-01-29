@@ -47,9 +47,7 @@ export const receiptWorker = new Worker(
       try {
         const paymentType = orderData.type === 'ACC_REGISTRATION' 
           ? 'Accommodation' 
-          : orderData.type === 'EVENT_REGISTRATION' 
-            ? 'Event Registration' 
-            : 'Incridea'; // Default fallback
+          : 'Incridea'; // Default fallback
 
         const emailHtml = getPaymentReceiptEmailHtml(userData.name, paymentType);
         

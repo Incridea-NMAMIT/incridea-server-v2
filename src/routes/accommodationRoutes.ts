@@ -4,7 +4,6 @@ import {
   updateVars,
   checkAvailability,
   createIndividualBooking,
-  createTeamBooking,
   getBookings,
   getUserByPid
 } from '../controllers/accommodationController'
@@ -17,7 +16,7 @@ const router = express.Router()
 router.get('/stats', authenticateJWT, getStats as unknown as RequestHandler) 
 router.get('/check-availability', authenticateJWT, checkAvailability as unknown as RequestHandler)
 router.post('/book/individual', authenticateJWT, createIndividualBooking as unknown as RequestHandler)
-router.post('/book/team', authenticateJWT, createTeamBooking as unknown as RequestHandler)
+
 
 // Admin/Committee Application Routes
 // Only Head/CoHead of ACCOMMODATION can manage

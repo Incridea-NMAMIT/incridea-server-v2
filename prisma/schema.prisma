@@ -80,7 +80,7 @@ model User {
   teamMembers TeamMember[]
 
   AccommodationPayment AccommodationPayment[]
-  AccommodationBooking AccommodationBooking[]
+
   documentUserAccesses DocumentUserAccess[]
   sessions             Session[]
 
@@ -132,7 +132,6 @@ model Alumni {
 model College {
   id                 Int                  @id @default(autoincrement())
   name               String
-  details            String?
   ChampionshipPoints ChampionshipPoints[]
   type               CollegeType          @default(ENGINEERING)
 
@@ -214,7 +213,6 @@ model Event {
   name        String
   description String?       @db.Text
   image       String?
-  fees        Int           @default(0)
   venue       String?
   minTeamSize Int           @default(1)
   maxTeamSize Int           @default(1)
@@ -656,7 +654,6 @@ enum ProniteDay {
 
 enum PaymentType {
   FEST_REGISTRATION
-  EVENT_REGISTRATION
   ACC_REGISTRATION
 }
 
@@ -768,9 +765,10 @@ model PID {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  TeamMembers TeamMember[]
-  LedTeams    Team[]       @relation("TeamLeader")
-  winners     Winners?
+  TeamMembers          TeamMember[]
+  LedTeams             Team[]                 @relation("TeamLeader")
+  winners              Winners?
+  AccommodationBooking AccommodationBooking[]
 
   @@index([userId])
   @@index([pidCode])
@@ -922,8 +920,8 @@ model AccommodationBooking {
   receipt           String?
   status            AccommodationBookingStatus @default(PENDING)
 
-  userId Int
-  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pidId Int
+  PID   PID @relation(fields: [pidId], references: [id], onDelete: Cascade)
 
   paymentId String?
   Payment   AccommodationPayment? @relation(fields: [paymentId], references: [id])
@@ -931,7 +929,7 @@ model AccommodationBooking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId])
+  @@index([pidId])
 }
 
 model AccommodationRequests {
@@ -960,7 +958,6 @@ enum PaymentMethod {
 
 enum PaymentPurpose {
   FEST_REGISTRATION
-  EVENT_REGISTRATION
   MERCH
   ACCOMMODATION
 }

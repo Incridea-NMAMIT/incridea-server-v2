@@ -19,7 +19,6 @@ export const registerSoloEvent = async (userId: number, eventId: number) => {
   if (event.eventType === 'TEAM' || event.eventType === 'TEAM_MULTIPLE_ENTRY') 
     throw new Error('Event is a team event')
 
-  const isPaidEvent = event.fees > 0
   const teamName = pid.pidCode;
   
   const [registeredTeam, orphanedTeam] = await Promise.all([
@@ -54,7 +53,7 @@ export const registerSoloEvent = async (userId: number, eventId: number) => {
       name: teamName,
       eventId,
       leaderId: pid.id,
-      confirmed: !isPaidEvent,
+      confirmed: true,
       TeamMembers: {
         create: {
           pidId: pid.id,
@@ -230,7 +229,6 @@ export const confirmTeam = async (userId: number, teamId: number) => {
     where: { id: team.eventId },
   })
   if (!event) throw new Error('Event not found')
-  if (event.fees > 0) throw new Error('Event is paid')
 
   const teamMembers = await prisma.teamMember.count({
     where: { teamId },
@@ -258,8 +256,6 @@ export const leaveTeam = async (userId: number, teamId: number) => {
         where: { id: team.eventId }
     })
     if (!event) throw new Error('Event not found')
-
-    if(team.confirmed && event.fees > 0) throw new Error('Team is confirmed and paid. Cannot leave.')
 
     await prisma.teamMember.delete({
         where: {
@@ -299,8 +295,6 @@ export const deleteTeam = async (userId: number, teamId: number) => {
     where: { id: team.eventId },
   })
   if (!event) throw new Error('Event not found')
-
-  if (team.confirmed && event.fees > 0) throw new Error('Team is confirmed and paid. Cannot delete.')
 
   return await prisma.team.delete({
     where: { id: teamId },
