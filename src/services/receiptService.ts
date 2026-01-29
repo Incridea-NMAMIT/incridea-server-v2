@@ -150,8 +150,9 @@ export async function generateAndUploadReceipt(userId: number, orderId: string) 
                 
                 const response = await utapi.uploadFiles([file]);
                 
-                if (response[0]?.data?.url) {
-                    const receiptUrl = response[0].data.url;
+                const data = response[0]?.data;
+                if (data?.ufsUrl || data?.url) {
+                    const receiptUrl = data.ufsUrl || data.url;
                     console.log(`Receipt uploaded successfully: ${receiptUrl}`);
                     logToFile(`Receipt uploaded successfully: ${receiptUrl}`);
 

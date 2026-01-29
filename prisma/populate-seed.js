@@ -22,7 +22,7 @@ async function ensureEvent(eventSeed) {
     name: eventSeed.name,
     description: eventSeed.description,
     image: eventSeed.image ?? null,
-    fees: eventSeed.fees,
+
     venue: eventSeed.venue,
     minTeamSize: eventSeed.minTeamSize,
     maxTeamSize: eventSeed.maxTeamSize,

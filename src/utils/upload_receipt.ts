@@ -29,8 +29,9 @@ export async function uploadReceipt(fileInput: string | { buffer: Buffer, name: 
 
     const response = await utapi.uploadFiles([file]);
     
-    if (response[0]?.data?.url) {
-      return response[0].data.url;
+    const data = response[0]?.data;
+    if (data?.ufsUrl || data?.url) {
+      return data.ufsUrl || data.url;
     } else {
       console.error("Upload failed details:", JSON.stringify(response[0]?.error, null, 2));
       return null;

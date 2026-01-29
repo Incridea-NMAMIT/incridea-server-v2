@@ -2,7 +2,7 @@
 import type { Request, Response } from 'express'
 import crypto from 'crypto'
 import prisma from '../prisma/client'
-import { RAZORPAY_WEBHOOK_SECRET, razorpay } from '../services/razorpay'
+import { RAZORPAY_WEBHOOK_SECRET, RAZORPAY_ACC_WEBHOOK_SECRET, razorpay, razorpayAccommodation } from '../services/razorpay'
 import { Status, PaymentType, AccommodationBookingStatus, PaymentPurpose, PaymentStatus, PaymentMethod } from '@prisma/client'
 import { listVariables } from '../services/adminService'
 import { generatePID } from '../services/pidService'
@@ -11,6 +11,8 @@ import { setPaymentStep, getPaymentStep, clearPaymentStep } from '../utils/payme
 
 import { getIO } from '../socket'
 import { addReceiptJob } from '../utils/queue'
+
+
 
 export async function initiatePayment(req: Request, res: Response) {
   try {
@@ -128,26 +130,29 @@ export async function initiatePayment(req: Request, res: Response) {
 export async function handleRazorpayWebhook(req: Request, res: Response) {
   try {
     const signature = req.headers['x-razorpay-signature'] as string
+    const body = (req as any).rawBody
     
-    // Check if secret is configured
-    if (!RAZORPAY_WEBHOOK_SECRET) {
-        console.error('RAZORPAY_WEBHOOK_SECRET is not set')
-        return res.status(500).json({ message: 'Server configuration error' })
-    }
-
     if (!signature) {
       return res.status(400).json({ message: 'Missing signature' })
     }
 
-    // Verify signature
-    const body = (req as any).rawBody
-    const expectedSignature = crypto
-      .createHmac('sha256', RAZORPAY_WEBHOOK_SECRET)
-      .update(body)
-      .digest('hex')
+    // Verify signature with both secrets
+    let isVerified = false
+    
+    // Try Default Secret
+    if (RAZORPAY_WEBHOOK_SECRET) {
+        const expected = crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(body).digest('hex')
+        if (expected === signature) isVerified = true
+    }
+    
+    // Try Accommodation Secret if not processed
+    if (!isVerified && RAZORPAY_ACC_WEBHOOK_SECRET) {
+        const expected = crypto.createHmac('sha256', RAZORPAY_ACC_WEBHOOK_SECRET).update(body).digest('hex')
+        if (expected === signature) isVerified = true
+    }
 
-    if (expectedSignature !== signature) {
-      console.error('Invalid Razorpay signature')
+    if (!isVerified) {
+      console.error('Invalid Razorpay signature (Tried both keys)')
       return res.status(400).json({ message: 'Invalid signature' })
     }
 
@@ -161,7 +166,6 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
       const orderId = paymentEntity.order_id
       const isSuccess = event.event !== 'payment.failed';
       
-      // 1. Check for Fest Registration Payment
       const paymentOrder = await prisma.paymentOrder.findUnique({
           where: { orderId }
       })
@@ -176,7 +180,6 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
              // Handle Failure
              await prisma.$transaction(async (tx) => {
                  // Create Payment record
-                 // Check if already exists to avoid unique constraint error
                  const existing = await tx.payment.findUnique({ where: { gatewayPaymentId: paymentEntity.id }});
                  if (!existing) {
                     await tx.payment.create({
@@ -189,55 +192,30 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
                     data: {
                       status: Status.FAILED,
                       paymentDataJson: paymentEntity,
-                    } as any, // CASTING AS ANY
+                    } as any, 
                   })
+                  
+                  // If accommodation, we should also cancel bookings potentially, but usually we just leave them PENDING or cancel
+                  if (paymentOrder.type === PaymentType.ACC_REGISTRATION) {
+                      const pid = await tx.pID.findFirst({ where: { userId: paymentOrder.userId } });
+                      if (pid) {
+                          await tx.accommodationBooking.updateMany({
+                              where: { pidId: pid.id, status: AccommodationBookingStatus.PENDING },
+                              data: { status: AccommodationBookingStatus.CANCELLED }
+                          })
+                      }
+                  }
               });
              console.log(`Payment failed for order ${orderId}, User ID: ${paymentOrder.userId}`)
-             // Notify user via socket
+             
              const io = getIO()
              io.to(`user-${paymentOrder.userId}`).emit('payment_failed')
           }
           return res.status(200).json({ status: 'ok' })
+      } else {
+          console.error(`Order not found for orderId: ${orderId}`)
       }
-
-      // 2. Check for Accommodation Payment
-      const accPayment = await prisma.accommodationPayment.findUnique({
-          where: { orderId }
-      })
-
-      if (accPayment) {
-          await prisma.accommodationPayment.update({
-              where: { orderId },
-              data: {
-                  status: isSuccess ? Status.SUCCESS : Status.FAILED,
-                  paymentData: paymentEntity
-              }
-          })
-          
-          if (isSuccess) {
-              // Confirm all linked bookings
-              await prisma.accommodationBooking.updateMany({
-                  where: { paymentId: accPayment.id },
-                  data: { status: AccommodationBookingStatus.CONFIRMED }
-              })
-              console.log(`Accommodation Payment successful for order ${orderId}`)
-          } else {
-             // Cancel linked bookings
-              await prisma.accommodationBooking.updateMany({
-                where: { paymentId: accPayment.id },
-                data: { status: AccommodationBookingStatus.CANCELLED }
-              })
-             console.log(`Accommodation Payment failed for order ${orderId}`)
-          }
-
-          return res.status(200).json({ status: 'ok' })
-      }
-
-      console.error(`Order not found for orderId: ${orderId}`)
-
     } 
-
-    // Handle other events if necessary
 
     return res.status(200).json({ status: 'ok' })
   } catch (error) {
@@ -254,10 +232,24 @@ export async function verifyPayment(req: Request, res: Response) {
       return res.status(400).json({ message: 'Missing payment details' })
     }
 
-    const secret = process.env.RAZORPAY_KEY_SECRET
+    // Check Payment Order first to determine secret
+    const paymentOrder = await prisma.paymentOrder.findUnique({
+      where: { orderId: razorpay_order_id },
+    })
+
+    if (!paymentOrder) {
+      return res.status(404).json({ message: 'Order not found' })
+    }
+
+    // Select Secret
+    let secret = process.env.RAZORPAY_KEY_SECRET
+    if (paymentOrder.type === PaymentType.ACC_REGISTRATION) {
+        secret = process.env.RAZORPAY_SEC_KEY_SECRET
+    }
+
     if (!secret) {
-      console.error('RAZORPAY_KEY_SECRET is not set')
-      return res.status(500).json({ message: 'Server configuration error' })
+      console.error('RAZORPAY_KEY_SECRET or RAZORPAY_SEC_KEY_SECRET is not set')
+      return res.status(500).json({ message: 'Configuration error' })
     }
 
     // 1. Verify Signature
@@ -271,38 +263,27 @@ export async function verifyPayment(req: Request, res: Response) {
       return res.status(400).json({ message: 'Invalid signature' })
     }
 
-    // 2. Check Payment Status in DB
-    const paymentOrder = await prisma.paymentOrder.findUnique({
-      where: { orderId: razorpay_order_id },
-    })
-
-    if (!paymentOrder) {
-      return res.status(404).json({ message: 'Order not found' })
-    }
-
     if (paymentOrder.status === Status.SUCCESS) {
       // Fetch PID if exists
       const pid = await prisma.pID.findFirst({
           where: { userId: paymentOrder.userId }
       })
 
-      // RETRY LOGIC: If receipt is missing, trigger generation again
+      // RETRY LOGIC for receipt if needed
       if (!paymentOrder.receipt) {
           console.warn(`Payment ${paymentOrder.orderId} is SUCCESS but missing receipt. Retrying generation...`);
-          // Note: We need payment entity. Since it's success, paymentDataJson should have it.
           const paymentEntity = paymentOrder.paymentDataJson; 
           if (paymentEntity) {
               const paymentData = createPaymentDataFromEntity(paymentEntity, paymentOrder);
-              // Trigger async to not block response? Or await? 
-              // Awaiting is safer to ensure it gets queued.
               try {
                   await processSuccessfulPayment(paymentOrder, paymentEntity, paymentData);
-              } catch (e) {
-                  console.error("Retry generation failed:", e);
-              }
+              } catch (e) { console.error("Retry generation failed:", e); }
           } else {
-              console.error("Refetching payment from Razorpay for missing receipt...");
-               const payment = await razorpay.payments.fetch(razorpay_payment_id)
+               // Fetch from correct razorpay instance
+               let rzp = razorpay;
+               if (paymentOrder.type === PaymentType.ACC_REGISTRATION) rzp = razorpayAccommodation;
+               
+               const payment = await rzp.payments.fetch(razorpay_payment_id)
                if(payment) {
                    const paymentData = createPaymentDataFromEntity(payment, paymentOrder);
                    await processSuccessfulPayment(paymentOrder, payment, paymentData);
@@ -318,8 +299,10 @@ export async function verifyPayment(req: Request, res: Response) {
     }
 
     // 3. If Pending/Failed locally, fetch from Razorpay to confirm
-    // sometimes webhook might be delayed
-    const payment = await razorpay.payments.fetch(razorpay_payment_id)
+    let rzp = razorpay;
+    if (paymentOrder.type === PaymentType.ACC_REGISTRATION) rzp = razorpayAccommodation;
+
+    const payment = await rzp.payments.fetch(razorpay_payment_id)
 
     if (!payment) {
         return res.status(404).json({ message: 'Payment not found on Razorpay' })
@@ -328,7 +311,6 @@ export async function verifyPayment(req: Request, res: Response) {
     if (payment.status === 'captured' || payment.status === 'authorized') {
         const paymentData = createPaymentDataFromEntity(payment, paymentOrder)
          
-         // Await processing to ensure receipt generation attempts verify completion
          try {
              await processSuccessfulPayment(paymentOrder, payment, paymentData);
          } catch (err) {
@@ -350,6 +332,7 @@ export async function verifyPayment(req: Request, res: Response) {
   }
 }
 
+
 export async function getMyPaymentStatus(req: Request, res: Response) {
     try {
         const userId = (req as any).user?.id
@@ -357,11 +340,16 @@ export async function getMyPaymentStatus(req: Request, res: Response) {
             return res.status(401).json({ message: 'Unauthorized' })
         }
 
-        // Fetch the latest FEST_REGISTRATION PaymentOrder
+        const typeQuery = req.query.type as string;
+        const type = (typeQuery === 'ACCOMMODATION' || typeQuery === 'ACC_REGISTRATION') 
+            ? PaymentType.ACC_REGISTRATION 
+            : PaymentType.FEST_REGISTRATION;
+
+        // Fetch the latest PaymentOrder
         const paymentOrder = await prisma.paymentOrder.findFirst({
             where: { 
                 userId,
-                type: PaymentType.FEST_REGISTRATION
+                type: type
             },
             orderBy: { createdAt: 'desc' }
         })
@@ -370,32 +358,39 @@ export async function getMyPaymentStatus(req: Request, res: Response) {
              return res.status(200).json({ status: 'none', message: 'No payment found' })
         }
         
-        // Check PID
-        const pidEntry = await prisma.pID.findFirst({
-            where: { userId }
-        })
-
-        // We return success ONLY if we have PID AND Receipt (if success)
-        // If payment is success but no PID/Receipt, we might be processing.
+        // For Fest, we check PID. For Accommodation, we check Booking Status?
+        // But for simplicity, we check if payment is SUCCESS.
         
         const currentStep = getPaymentStep(paymentOrder.orderId)
         
         let status = 'pending';
-        if (paymentOrder.status === Status.SUCCESS) {
-            // Only return success if we have both PID and Receipt (or if logic dictates)
-            // If we are still generating them, we should say 'processing' so frontend shows steps
-            if (pidEntry && paymentOrder.receipt) {
-                status = 'success';
-            } else {
-                status = 'processing';
+        let pidCode = null;
+        let receipt = paymentOrder.receipt;
+
+        if (type === PaymentType.FEST_REGISTRATION) {
+            const pidEntry = await prisma.pID.findFirst({ where: { userId } })
+            pidCode = pidEntry?.pidCode;
+            
+            if (paymentOrder.status === Status.SUCCESS) {
+                if (pidEntry && paymentOrder.receipt) {
+                    status = 'success';
+                } else {
+                    status = 'processing';
+                }
+            }
+        } else {
+            // Accommodation
+            if (paymentOrder.status === Status.SUCCESS) {
+                 status = 'success';
             }
         }
-        else if (paymentOrder.status === Status.FAILED) status = 'failed';
+        
+        if (paymentOrder.status === Status.FAILED) status = 'failed';
 
         return res.status(200).json({
             status: status,
-            pid: pidEntry?.pidCode,
-            receipt: paymentOrder.receipt,
+            pid: pidCode,
+            receipt: receipt,
             processingStep: currentStep
         })
 
@@ -407,16 +402,13 @@ export async function getMyPaymentStatus(req: Request, res: Response) {
 
 import redis from '../services/redis'
 
-// ... (existing imports)
-
-// Helper to process successful payment (update DB, generate PID)
+// Helper to process successful payment
 async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, paymentData: any) {
     const io = getIO()
 
     // Update PaymentOrder and Create Payment
     await prisma.$transaction(async (tx) => {
         // Create Payment record
-        // Check if already exists to avoid unique constraint error
         const existing = await tx.payment.findUnique({ where: { gatewayPaymentId: paymentEntity.id }});
         if (!existing) {
         await tx.payment.create({
@@ -429,7 +421,7 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
         data: {
             status: Status.SUCCESS,
             paymentDataJson: paymentEntity,
-        } as any, // CASTING AS ANY
+        } as any, 
         })
     });
 
@@ -452,17 +444,13 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
         console.error('Failed to emit payment.success event:', error)
     }
 
-    // Refetch the latest PaymentOrder to ensure we have the committed status and check for existing receipt
     const freshPaymentOrder = await prisma.paymentOrder.findUnique({
         where: { orderId: paymentOrder.orderId }
     })
 
-    if (!freshPaymentOrder) {
-        console.error('PaymentOrder disappeared after update:', paymentOrder.orderId)
-        return null
-    }
-
-    // Generate PID if it's a FEST_REGISTRATION
+    if (!freshPaymentOrder) return null;
+    
+    // --- FEST REGISTRATION FLOW ---
     if (freshPaymentOrder.type === PaymentType.FEST_REGISTRATION) {
         try {
             console.log(`Processing FEST_REGISTRATION for User ID: ${freshPaymentOrder.userId}, Order ID: ${freshPaymentOrder.orderId}`);
@@ -473,25 +461,19 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
             })
             
             if (!user) {
-                 console.error('User not found for receipt and PID generation:', freshPaymentOrder.userId);
                  io.to(`user-${freshPaymentOrder.userId}`).emit('payment_failed')
                  return null;
             }
 
             // 3. Generate PID
-            console.log(`Generating PID for User ID: ${freshPaymentOrder.userId}...`);
             io.to(`user-${freshPaymentOrder.userId}`).emit('generating_pid')
-            
             setPaymentStep(freshPaymentOrder.orderId, 'GENERATING_PID')
 
             const pidContext = await generatePID(freshPaymentOrder.userId, freshPaymentOrder.orderId)
-            console.log(`PID generated successfully: ${pidContext.pidCode}`)
             
             // 4. Queue Receipt Generation
-            console.log(`Queueing Receipt for Order ID: ${freshPaymentOrder.orderId}...`)
             io.to(`user-${freshPaymentOrder.userId}`).emit('generating_receipt') 
             
-            // Prepare data for receipt generator
             const orderDataForReceipt = {
                 orderId: freshPaymentOrder.orderId,
                 type: freshPaymentOrder.type,
@@ -508,8 +490,6 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
                 pid: pidContext.pidCode 
             }
 
-            // Add to Queue
-            console.log(`Adding receipt job to queue for ${freshPaymentOrder.orderId}`);
             await addReceiptJob({
                 orderData: orderDataForReceipt,
                 userData: userDataForReceipt,
@@ -517,12 +497,8 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
             })
 
             setPaymentStep(freshPaymentOrder.orderId, 'COMPLETED')
-            
-            // Emit PID Generated (and implicit receipt completion)
             io.to(`user-${freshPaymentOrder.userId}`).emit('pid_generated', { pid: pidContext.pidCode })
-
-            // Optional: Schedule cleanup 
-            setTimeout(() => clearPaymentStep(freshPaymentOrder.orderId), 60000) // Clear after 1 minute
+            setTimeout(() => clearPaymentStep(freshPaymentOrder.orderId), 60000)
 
             return pidContext.pidCode
 
@@ -531,21 +507,80 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
             io.to(`user-${freshPaymentOrder.userId}`).emit('payment_failed')
             return null
         }
-    }
-    return null
-}
+    } 
+    
+    // --- ACCOMMODATION FLOW ---
+    else if (freshPaymentOrder.type === PaymentType.ACC_REGISTRATION) {
+        try {
+            console.log(`Processing ACC_REGISTRATION for Order ID: ${freshPaymentOrder.orderId}`);
+            
+            // 1. Confirm Bookings
+             const pid = await prisma.pID.findFirst({ where: { userId: freshPaymentOrder.userId } });
+            if (pid) {
+                await prisma.accommodationBooking.updateMany({
+                    where: { pidId: pid.id, status: AccommodationBookingStatus.PENDING },
+                    data: { status: AccommodationBookingStatus.CONFIRMED }
+                })
 
+                // Generate Receipt
+                const user = await prisma.user.findUnique({
+                    where: { id: freshPaymentOrder.userId },
+                    include: { College: true }
+                });
+
+                if (user) {
+                    const orderDataForReceipt = {
+                        orderId: freshPaymentOrder.orderId,
+                        type: freshPaymentOrder.type,
+                        updatedAt: freshPaymentOrder.updatedAt,
+                        collectedAmount: freshPaymentOrder.collectedAmount,
+                        paymentData: freshPaymentOrder.paymentDataJson,
+                    }
+                    
+                    const userDataForReceipt = {
+                        name: user.name,
+                        email: user.email,
+                        phoneNumber: user.phoneNumber,
+                        college: user.College?.name,
+                        pid: pid.pidCode
+                    }
+
+                    io.to(`user-${freshPaymentOrder.userId}`).emit('generating_receipt')
+
+                    await addReceiptJob({
+                        orderData: orderDataForReceipt,
+                        userData: userDataForReceipt,
+                        userId: freshPaymentOrder.userId
+                    })
+
+                    setPaymentStep(freshPaymentOrder.orderId, 'COMPLETED')
+                    io.to(`user-${freshPaymentOrder.userId}`).emit('booking_confirmed')
+                    setTimeout(() => clearPaymentStep(freshPaymentOrder.orderId), 60000)
+                }
+            } else {
+                 console.error(`PID missing for User ${freshPaymentOrder.userId}, cannot generate receipt or confirm booking.`);
+            }
+            
+
+        } catch (e) {
+            console.error("Error in acc payment processing:", e);
+        }
+    }
+    
+    return null;
+}
 
 function createPaymentDataFromEntity(data: any, order: any): any {
     // Map JSON to Payment fields
-    // Determine PaymentPurpose
-    let purpose: any = PaymentPurpose.FEST_REGISTRATION; // Default based on user sample
+    let purpose: any = PaymentPurpose.FEST_REGISTRATION; 
     if (data.notes && data.notes.type) {
         if (data.notes.type === 'FEST_REGISTRATION') purpose = PaymentPurpose.FEST_REGISTRATION;
         else if (data.notes.type === 'ACCOMMODATION' || data.notes.type === 'ACC_REGISTRATION') purpose = PaymentPurpose.ACCOMMODATION;
         else if (data.notes.type === 'MERCH') purpose = PaymentPurpose.MERCH;
-    } else if (order.type === 'FEST_REGISTRATION') {
+    } else if (order.type === PaymentType.FEST_REGISTRATION) {
        purpose = PaymentPurpose.FEST_REGISTRATION;
+    } else if (order.type === PaymentType.ACC_REGISTRATION) {
+       purpose = PaymentPurpose.ACCOMMODATION;
     }
 
     // Map Status
@@ -558,7 +593,7 @@ function createPaymentDataFromEntity(data: any, order: any): any {
     else if (s === 'refunded') status = PaymentStatus.REFUNDED;
 
     // Map Method
-    let method: any = PaymentMethod.UPI; // Default or fallback
+    let method: any = PaymentMethod.UPI; 
     const m = data.method;
     if (m === 'card') method = PaymentMethod.CARD;
     else if (m === 'netbanking') method = PaymentMethod.NETBANKING;
@@ -623,8 +658,6 @@ export async function verifyReceiptAccess(req: Request, res: Response) {
       return res.status(404).send('Receipt not generated yet')
     }
 
-    // Verify Payment ID matches
-    // We check against the stored JSON or the related Payment record
     const storedPaymentData = paymentOrder.paymentDataJson as any
     const storedPaymentId = storedPaymentData?.id || storedPaymentData?.entity?.id || paymentOrder.paymentData?.gatewayPaymentId
 
@@ -632,8 +665,6 @@ export async function verifyReceiptAccess(req: Request, res: Response) {
       return res.status(403).send('Unauthorized access')
     }
 
-    // Serve PDF Inline
-    // Fetch the PDF from the UploadThing URL
     const response = await fetch(paymentOrder.receipt);
     
     if (!response.ok) {

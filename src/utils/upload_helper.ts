@@ -58,7 +58,7 @@ async function main() {
         
         const data = response[0]?.data
         // @ts-ignore
-        const url = data?.url || data?.ufsUrl || data?.appUrl
+        const url = data?.ufsUrl 
         
         if (url) {
             console.log(url) // Print ONLY the URL to stdout for the Python script to capture

@@ -79,8 +79,6 @@ model User {
   documents   Document[]
   teamMembers TeamMember[]
 
-  AccommodationPayment AccommodationPayment[]
-
   documentUserAccesses DocumentUserAccess[]
   sessions             Session[]
 
@@ -256,12 +254,11 @@ model Team {
 
   Winner Winners?
 
-  Score             Scores[]
-  Comments          Comments[]
-  QuizScores        QuizScore[]
-  TeamMembers       TeamMember[]
-  QuizSubmissions   QuizSubmission[]
-  EventPaymentOrder EventPaymentOrder[]
+  Score           Scores[]
+  Comments        Comments[]
+  QuizScores      QuizScore[]
+  TeamMembers     TeamMember[]
+  QuizSubmissions QuizSubmission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -307,27 +304,12 @@ model PaymentOrder {
   userId          Int
   User            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  PID       PID?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  PID                   PID?
+  accommodationBookings AccommodationBooking[]
 
   @@index([userId])
-}
-
-model EventPaymentOrder {
-  id          String @id @default(cuid())
-  orderId     String @unique
-  amount      Int    @default(250)
-  paymentData Json?
-  status      Status @default(PENDING)
-
-  teamId Int
-  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([teamId])
 }
 
 model BranchRep {
@@ -759,8 +741,7 @@ model PID {
   paymentOrderId String       @unique
   PaymentOrder   PaymentOrder @relation(fields: [paymentOrderId], references: [orderId], onDelete: Cascade)
 
-  AccommodationPayment AccommodationPayment[]
-  ChampionshipPoints   ChampionshipPoints[]
+  ChampionshipPoints ChampionshipPoints[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -890,27 +871,6 @@ model Document {
   @@index([generatedById])
 }
 
-model AccommodationPayment {
-  id          String      @id @default(cuid())
-  orderId     String      @unique
-  amount      Int         @default(200)
-  paymentData Json?
-  status      Status      @default(PENDING)
-  type        PaymentType @default(ACC_REGISTRATION)
-
-  userId Int
-  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  pidId Int?
-  PID   PID? @relation(fields: [pidId], references: [id], onDelete: SetNull)
-
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  accommodationBookings AccommodationBooking[]
-
-  @@index([userId])
-}
-
 model AccommodationBooking {
   id                String                     @id @default(cuid())
   accommodationType Gender
@@ -923,8 +883,8 @@ model AccommodationBooking {
   pidId Int
   PID   PID @relation(fields: [pidId], references: [id], onDelete: Cascade)
 
-  paymentId String?
-  Payment   AccommodationPayment? @relation(fields: [paymentId], references: [id])
+  paymentOrderId String?
+  PaymentOrder   PaymentOrder? @relation(fields: [paymentOrderId], references: [orderId])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

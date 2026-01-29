@@ -3,7 +3,7 @@ import prisma from '../prisma/client'
 import { Gender, AccommodationBookingStatus, PaymentType, Status, CommitteeName } from '@prisma/client'
 import { z } from 'zod'
 import { AuthenticatedRequest } from '../middlewares/authMiddleware'
-import { razorpay } from '../services/razorpay'
+import { razorpayAccommodation } from '../services/razorpay'
 
 // Get available accommodation stats
 export async function getStats(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -110,6 +110,7 @@ export async function checkAvailability(req: AuthenticatedRequest, res: Response
   }
 }
 
+
 // Create Booking (Individual)
 export async function createIndividualBooking(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
@@ -119,19 +120,29 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
     const schema = z.object({
       checkIn: z.string().datetime(),
       checkOut: z.string().datetime(),
-      gender: z.enum([Gender.MALE, Gender.FEMALE]),
       idCard: z.string().url(),
     })
     
     const body = schema.parse(req.body)
 
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { gender: true }
+    })
+
+    if (!user || !user.gender) {
+        return res.status(400).json({ message: 'User gender not found. Please update your profile.' })
+    }
+
+    const gender = user.gender
+
     // Check availability again (race condition mitigation)
-    const key = body.gender === 'MALE' ? 'BoysAccCount' : 'GirlsAccCount'
+    const key = gender === 'MALE' ? 'BoysAccCount' : 'GirlsAccCount'
     const totalVar = await prisma.accommodationRequests.findUnique({ where: { key } })
     const total = totalVar?.value || 0
     const booked = await prisma.accommodationBooking.count({
       where: {
-        accommodationType: body.gender,
+        accommodationType: gender,
         status: { in: [AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.PENDING] }
       }
     })
@@ -152,8 +163,8 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
        const amountInRupees = Math.ceil(amount / (1 - 0.0236))
        const amountInPaisa = amountInRupees * 100
 
-       // Create Razorpay Order
-       const order = await razorpay.orders.create({
+       // Create Razorpay Order with Accommodation credentials
+       const order = await razorpayAccommodation.orders.create({
            amount: amountInPaisa,
            currency: 'INR',
            receipt: `acc_ind_${userId}_${Date.now()}`,
@@ -167,29 +178,33 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
        if (!order) throw new Error('Failed to create payment order')
        const orderId = order.id
 
-       const payment = await tx.accommodationPayment.create({
+       // Save to PaymentOrder table instead of AccommodationPayment
+       await tx.paymentOrder.create({
          data: {
-           orderId,
-           amount: amountInRupees, // Storing what user pays
-           userId,
+           orderId: order.id,
+           amount: amount,
+           collectedAmount: amountInRupees,
            status: Status.PENDING,
-           type: PaymentType.ACC_REGISTRATION
+           type: PaymentType.ACC_REGISTRATION,
+           userId,
+           paymentDataJson: order as any
          }
        })
 
        const booking = await tx.accommodationBooking.create({
          data: {
            pidId: pid.id,
-           accommodationType: body.gender,
+           accommodationType: gender,
            checkIn: new Date(body.checkIn),
            checkOut: new Date(body.checkOut),
            idCard: body.idCard,
            status: AccommodationBookingStatus.PENDING,
-           paymentId: payment.id
+           paymentOrderId: order.id
          }
        })
        
-       return { booking, payment: { ...payment, key: process.env.RAZORPAY_KEY_ID, currency: order.currency, amount: order.amount } }
+       // Return the ACCOMMODATION KEY ID
+       return { booking, payment: { ...booking, key: process.env.RAZORPAY_SEC_KEY_ID, currency: order.currency, amount: order.amount, orderId: orderId } }
     })
 
     return res.json(booking)
@@ -230,7 +245,7 @@ export async function getBookings(req: Request, res: Response, next: NextFunctio
                 }
             }
         },
-        Payment: true
+        PaymentOrder: true
       },
       skip,
       take: Number(limit),

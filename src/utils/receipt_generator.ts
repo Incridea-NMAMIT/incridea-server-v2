@@ -103,7 +103,7 @@ async function generateQrCode(data: string): Promise<Buffer> {
   return await bwipjs.toBuffer({
     bcid: 'qrcode',
     text: data,
-    scale: 3,
+    scale: 2,
     includetext: false,
     textxalign: 'center',
   });
@@ -309,7 +309,7 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     const barcodeBuffer = await bwipjs.toBuffer({
         bcid: 'code128',
         text: pid,
-        scale: 3, 
+        scale: 1, 
         height: 10,
         includetext: false, 
         textxalign: 'center',

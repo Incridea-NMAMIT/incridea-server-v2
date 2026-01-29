@@ -1,8 +1,8 @@
+import { env } from './utils/env'
 import os from 'os'
 import http from 'http'
 import app from './app'
 import prisma from './prisma/client'
-import { env } from './utils/env'
 import { initSocket } from './socket'
 import './worker/receiptWorker'
 
