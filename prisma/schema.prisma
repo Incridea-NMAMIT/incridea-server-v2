@@ -747,9 +747,9 @@ model PID {
   updatedAt DateTime @updatedAt
 
   TeamMembers          TeamMember[]
-  LedTeams             Team[]                 @relation("TeamLeader")
+  LedTeams             Team[]                @relation("TeamLeader")
   winners              Winners?
-  AccommodationBooking AccommodationBooking[]
+  AccommodationBooking AccommodationBooking?
 
   @@index([userId])
   @@index([pidCode])
@@ -872,13 +872,11 @@ model Document {
 }
 
 model AccommodationBooking {
-  id                String                     @id @default(cuid())
+  id                String   @id @default(cuid())
   accommodationType Gender
   checkIn           DateTime
   checkOut          DateTime
   idCard            String?
-  receipt           String?
-  status            AccommodationBookingStatus @default(PENDING)
 
   pidId Int
   PID   PID @relation(fields: [pidId], references: [id], onDelete: Cascade)
@@ -889,7 +887,7 @@ model AccommodationBooking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([pidId])
+  @@unique([pidId])
 }
 
 model AccommodationRequests {

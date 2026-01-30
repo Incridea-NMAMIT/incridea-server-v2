@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express'
 import prisma from '../prisma/client'
-import { Gender, AccommodationBookingStatus, PaymentType, Status, CommitteeName } from '@prisma/client'
+import { Gender, PaymentType, Status, CommitteeName } from '@prisma/client'
 import { z } from 'zod'
 import { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import { razorpayAccommodation } from '../services/razorpay'
@@ -19,14 +19,18 @@ export async function getStats(_req: AuthenticatedRequest, res: Response, next: 
     const boysBooked = await prisma.accommodationBooking.count({
       where: {
         accommodationType: Gender.MALE,
-        status: { in: [AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.PENDING] }
+        PaymentOrder: {
+            status: { in: [Status.SUCCESS, Status.PENDING] }
+        }
       }
     })
 
     const girlsBooked = await prisma.accommodationBooking.count({
       where: {
         accommodationType: Gender.FEMALE,
-        status: { in: [AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.PENDING] }
+        PaymentOrder: {
+            status: { in: [Status.SUCCESS, Status.PENDING] }
+        }
       }
     })
 
@@ -100,7 +104,9 @@ export async function checkAvailability(req: AuthenticatedRequest, res: Response
     const booked = await prisma.accommodationBooking.count({
       where: {
         accommodationType: gender as Gender,
-        status: { in: [AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.PENDING] }
+        PaymentOrder: {
+             status: { in: [Status.SUCCESS, Status.PENDING] }
+        }
       }
     })
 
@@ -118,9 +124,12 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
     if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
     const schema = z.object({
-      checkIn: z.string().datetime(),
-      checkOut: z.string().datetime(),
+      checkIn: z.enum(['2026-03-05', '2026-03-06', '2026-03-07']),
+      checkOut: z.enum(['2026-03-05', '2026-03-06', '2026-03-07']),
       idCard: z.string().url(),
+    }).refine((data) => data.checkOut >= data.checkIn, {
+        message: "Check-out date must be after or equal to check-in date",
+        path: ["checkOut"],
     })
     
     const body = schema.parse(req.body)
@@ -142,7 +151,9 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
     const booked = await prisma.accommodationBooking.count({
       where: {
         accommodationType: gender,
-        status: { in: [AccommodationBookingStatus.CONFIRMED, AccommodationBookingStatus.PENDING] }
+        PaymentOrder: {
+            status: { in: [Status.SUCCESS, Status.PENDING] }
+        }
       }
     })
 
@@ -154,6 +165,19 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
     const pid = await prisma.pID.findUnique({ where: { userId }, select: { id: true, pidCode: true } })
     if (!pid) {
         return res.status(400).json({ message: 'PID not found for user. Please register for the fest first.' })
+    }
+
+    const existingBooking = await prisma.accommodationBooking.findFirst({
+        where: { 
+            pidId: pid.id,
+            PaymentOrder: {
+                status: { in: [Status.SUCCESS, Status.PENDING] }
+            }
+        }
+    })
+
+    if (existingBooking) {
+        return res.status(400).json({ message: 'You have already registered. Please check email for receipt which serves as proof of payment' })
     }
 
     // Create Booking and Payment Order
@@ -199,7 +223,7 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
            checkIn: new Date(body.checkIn),
            checkOut: new Date(body.checkOut),
            idCard: body.idCard,
-           status: AccommodationBookingStatus.PENDING,
+
            paymentOrderId: order.id
          }
        })
@@ -222,7 +246,7 @@ export async function getBookings(req: Request, res: Response, next: NextFunctio
     const skip = (Number(page) - 1) * Number(limit)
 
     const where: any = {}
-    if (status) where.status = status
+    if (status) where.PaymentOrder = { status: status }
     if (gender) where.accommodationType = gender
     if (search) {
       where.PID = {

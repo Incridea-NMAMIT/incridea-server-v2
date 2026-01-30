@@ -3,7 +3,7 @@ import type { Request, Response } from 'express'
 import crypto from 'crypto'
 import prisma from '../prisma/client'
 import { RAZORPAY_WEBHOOK_SECRET, RAZORPAY_ACC_WEBHOOK_SECRET, razorpay, razorpayAccommodation } from '../services/razorpay'
-import { Status, PaymentType, AccommodationBookingStatus, PaymentPurpose, PaymentStatus, PaymentMethod } from '@prisma/client'
+import { Status, PaymentType, PaymentPurpose, PaymentStatus, PaymentMethod } from '@prisma/client'
 import { listVariables } from '../services/adminService'
 import { generatePID } from '../services/pidService'
 
@@ -209,13 +209,11 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
                   })
                   
                   // If accommodation, we should also cancel bookings potentially, but usually we just leave them PENDING or cancel
+                  // If accommodation, we might delete the booking if payment fails or leave it linked to failed payment
                   if (paymentOrder.type === PaymentType.ACC_REGISTRATION) {
                       const pid = await tx.pID.findFirst({ where: { userId: paymentOrder.userId } });
                       if (pid) {
-                          await tx.accommodationBooking.updateMany({
-                              where: { pidId: pid.id, status: AccommodationBookingStatus.PENDING },
-                              data: { status: AccommodationBookingStatus.CANCELLED }
-                          })
+                          // Optionally delete the booking or keep it. With status gone, keeping it with FAILED payment is fine.
                       }
                   }
               });
@@ -561,18 +559,10 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
                  return null;
             }
 
-            // 1. Confirm Bookings
-            console.log('processSuccessfulPayment: Confirming Accommodation Bookings...');
+            // 1. Confirm Bookings - No longer needed as status is removed.
+            // Presence of SUCCESS PaymentOrder implies confirmed.
+            console.log('processSuccessfulPayment: Accommodation Booking implicitly confirmed by Payment Success');
             const pid = await prisma.pID.findFirst({ where: { userId: freshPaymentOrder.userId } });
-            
-            if (pid) {
-                await prisma.accommodationBooking.updateMany({
-                    where: { pidId: pid.id, status: AccommodationBookingStatus.PENDING },
-                    data: { status: AccommodationBookingStatus.CONFIRMED }
-                })
-            } else {
-                 console.warn(`PID missing for User ${freshPaymentOrder.userId} during Acc Payment processing.`);
-            }
 
             // 2. Queue Receipt Generation
             try {
