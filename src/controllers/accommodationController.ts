@@ -129,7 +129,6 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
         where: { id: userId },
         select: { gender: true }
     })
-
     if (!user || !user.gender) {
         return res.status(400).json({ message: 'User gender not found. Please update your profile.' })
     }
@@ -152,7 +151,7 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
     }
 
     // Get PID for user
-    const pid = await prisma.pID.findUnique({ where: { userId } })
+    const pid = await prisma.pID.findUnique({ where: { userId }, select: { id: true, pidCode: true } })
     if (!pid) {
         return res.status(400).json({ message: 'PID not found for user. Please register for the fest first.' })
     }
@@ -171,7 +170,8 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
            notes: {
                type: PaymentType.ACC_REGISTRATION,
                userId: String(userId),
-               bookingType: 'INDIVIDUAL'
+               bookingType: 'INDIVIDUAL',
+               pid: pid.pidCode
            }
        })
 
@@ -187,6 +187,7 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
            status: Status.PENDING,
            type: PaymentType.ACC_REGISTRATION,
            userId,
+           PID: pid.pidCode,
            paymentDataJson: order as any
          }
        })

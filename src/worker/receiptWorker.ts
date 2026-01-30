@@ -18,21 +18,34 @@ export const receiptWorker = new Worker(
     const { orderData, userData, userId } = job.data;
     const orderId = orderData.orderId;
 
-    console.log(`Processing receipt job for Order ID: ${orderId}`);
+    console.log(`[ReceiptWorker] Processing job ${job.id} for Order ID: ${orderId}`);
     const io = getIO();
 
     try {
-      io.to(`user-${userId}`).emit('generating_receipt');
+      if (userId) {
+          io.to(`user-${userId}`).emit('generating_receipt');
+      }
 
       // 1. Generate PDF Buffer
+      console.log(`[ReceiptWorker] Generating PDF for ${orderId}...`);
       const receiptBuffer = await generateReceiptPdf(orderData, userData);
-      if (!receiptBuffer) throw new Error('Failed to generate receipt PDF');
+      if (!receiptBuffer) throw new Error('Failed to generate receipt PDF (empty buffer)');
 
       const receiptFilename = `receipt_${orderId}.pdf`;
 
-      // 2. Upload using Buffer
-      const receiptUrl = await uploadReceipt({ buffer: receiptBuffer, name: receiptFilename });
-      if (!receiptUrl) throw new Error('Failed to upload receipt');
+      // 2. Upload using Buffer with Timeout (30s)
+      console.log(`[ReceiptWorker] Uploading PDF for ${orderId}...`);
+      
+      const uploadPromise = uploadReceipt({ buffer: receiptBuffer, name: receiptFilename });
+      const timeoutPromise = new Promise<string | null>((_, reject) => 
+          setTimeout(() => reject(new Error('Upload timed out after 30s')), 30000)
+      );
+
+      const receiptUrl = await Promise.race([uploadPromise, timeoutPromise]);
+      
+      if (!receiptUrl) throw new Error('Failed to upload receipt (returned null)');
+
+      console.log(`[ReceiptWorker] Upload successful: ${receiptUrl}`);
 
       // 3. Update DB
       await prisma.paymentOrder.update({
@@ -40,14 +53,16 @@ export const receiptWorker = new Worker(
         data: { receipt: receiptUrl },
       });
 
-      console.log(`Receipt completed for Order ID: ${orderId}`);
-      io.to(`user-${userId}`).emit('receipt_generated', { receiptUrl });
+      console.log(`[ReceiptWorker] Receipt completed for Order ID: ${orderId}`);
+      if (userId) {
+        io.to(`user-${userId}`).emit('receipt_generated', { receiptUrl });
+      }
       
       // 4. Send Email
       try {
         const paymentType = orderData.type === 'ACC_REGISTRATION' 
-          ? 'Accommodation' 
-          : 'Incridea'; // Default fallback
+          ? 'Accommodation Fee' 
+          : 'Incridea Fest Registration Fee'; 
 
         const emailHtml = getPaymentReceiptEmailHtml(userData.name, paymentType);
         
@@ -59,34 +74,34 @@ export const receiptWorker = new Worker(
           [
             {
               filename: receiptFilename,
-              content: receiptBuffer, // Attach buffer directly
+              content: receiptBuffer, 
             },
           ]
         );
-        console.log(`Receipt email sent to ${userData.email} for Order ID: ${orderId}`);
+        console.log(`[ReceiptWorker] Email sent to ${userData.email} for Order ID: ${orderId}`);
       } catch (emailError) {
-        // Non-blocking error for email
-        console.error(`Failed to send receipt email for Order ID: ${orderId}`, emailError);
+        console.error(`[ReceiptWorker] Failed to send receipt email for Order ID: ${orderId}`, emailError);
       }
 
       return { receiptUrl };
     } catch (error) {
-      console.error(`Receipt job failed for ${orderId}:`, error);
+      console.error(`[ReceiptWorker] Job failed for ${orderId}:`, error);
       throw error; // Triggers retry
     }
   },
   {
     connection,
-    concurrency: 5, // Parallel processing
+    concurrency: 20, // Reduced concurrency to be safe
+    lockDuration: 60000, // Increase lock duration to 60s
   }
 );
 
 console.log("Worker 'receipt-generation' started");
 
 receiptWorker.on('completed', (job) => {
-  console.log(`Job ${job.id} completed!`);
+  console.log(`[ReceiptWorker] Job ${job.id} completed!`);
 });
 
 receiptWorker.on('failed', (job, err) => {
-  console.error(`Job ${job?.id} failed with ${err.message}`);
+  console.error(`[ReceiptWorker] Job ${job?.id} failed with ${err.message}`);
 });

@@ -76,7 +76,6 @@ export async function generatePID(userId: number, paymentOrderId: string) {
       data: {
         pidCode,
         userId,
-        paymentOrderId,
       },
     });
 

@@ -306,7 +306,8 @@ model PaymentOrder {
 
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
-  PID                   PID?
+  PID                   String?
+  PIDData               PID?                   @relation("AccommodationPayments", fields: [PID], references: [pidCode], onDelete: Cascade)
   accommodationBookings AccommodationBooking[]
 
   @@index([userId])
@@ -738,8 +739,7 @@ model PID {
   userId Int  @unique
   User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  paymentOrderId String       @unique
-  PaymentOrder   PaymentOrder @relation(fields: [paymentOrderId], references: [orderId], onDelete: Cascade)
+  Orders PaymentOrder[] @relation("AccommodationPayments")
 
   ChampionshipPoints ChampionshipPoints[]
 
