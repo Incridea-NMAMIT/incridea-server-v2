@@ -601,7 +601,8 @@ export const getAllDocuments = async (req: AuthenticatedRequest, res: Response) 
                     orderBy: { version: 'desc' },
                 },
                 committee: true,
-                documentAccess: { include: { committee: true } }
+                documentAccess: { include: { committee: true } },
+                documentUserAccesses: { include: { user: true } }
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -793,11 +794,7 @@ export const getDocumentSettings = async (req: AuthenticatedRequest, res: Respon
     try {
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-        
-        // Members might not need this? Or maybe to know if they can create classified?
-        // But the toggles are for CoHead visibility. 
-        // CoHead needs to know if they can create classified ("allow co head to create classified toggle").
-        
+
         const settings = await prisma.setting.findMany({
             where: {
                 key: { in: ['DOC_SHARE_CLASSIFIED', 'DOC_ALLOW_CREATE_CLASSIFIED', 'DOC_SHARE_SHARED'] }
@@ -816,6 +813,113 @@ export const getDocumentSettings = async (req: AuthenticatedRequest, res: Respon
          return res.status(500).json({ message: 'Internal Server Error' });
     }
 };
+
+export const getDocumentById = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+        const docDetails = await prisma.documentDetails.findUnique({
+            where: { id: Number(id) },
+            include: {
+                Documents: { orderBy: { version: 'desc' }, take: 1 },
+                committee: true,
+                documentAccess: true,
+                documentUserAccesses: true
+            }
+        });
+
+        if (!docDetails) return res.status(404).json({ message: 'Document not found' });
+
+        // Access Control Logic
+        let hasAccess = false;
+
+        // 1. Admin
+        const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
+        if (isAdmin) hasAccess = true;
+
+        // 2. Head of Documentation
+        const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
+        if (!hasAccess && docCommittee) {
+            if (docCommittee.headUserId === userId || docCommittee.coHeadUserId === userId) {
+                hasAccess = true;
+            }
+        }
+
+        // 3. Head of Owning Committee
+        if (!hasAccess) {
+             const owningCommittee = docDetails.committee;
+             if (owningCommittee.headUserId === userId || owningCommittee.coHeadUserId === userId) {
+                 hasAccess = true; // Heads of owning committee always have access
+                 // Note: Logic about "Classified" access for Heads is usually for CREATION. Viewing own committee docs should be allowed?
+                 // Prompt says: "only to the head of the committee of the whose committee of the document"
+             }
+        }
+
+        // 4. Shared Permission (Committee Access)
+        if (!hasAccess) {
+            // Check if user is Head/CoHead of a committee that has access
+            // We need to fetch user's committees
+            const user = await prisma.user.findUnique({
+                 where: { id: userId },
+                 include: { HeadOfCommittee: true, CoHeadOfCommittee: true }
+            });
+            
+            if (user) {
+                const headCommitteeIds = user.HeadOfCommittee.map(c => c.id);
+                const coHeadCommitteeIds = user.CoHeadOfCommittee.map(c => c.id);
+
+                // Check DocumentAccess records
+                for (const access of docDetails.documentAccess) {
+                    if (headCommitteeIds.includes(access.committeeId)) {
+                        hasAccess = true;
+                        break;
+                    }
+                    if (coHeadCommitteeIds.includes(access.committeeId) && access.accessType === 'HEAD_AND_COHEAD') {
+                        hasAccess = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 5. Shared Permission (User Access)
+        if (!hasAccess) {
+            const userAccess = docDetails.documentUserAccesses.find(ua => ua.userId === userId);
+            if (userAccess) {
+                hasAccess = true;
+            }
+        }
+
+        if (!hasAccess) {
+            return res.status(403).json({ message: 'Forbidden: You do not have permission to view this document.' });
+        }
+
+        // Attach creator data
+        const latestDoc = docDetails.Documents[0];
+        let createdByName = 'Unknown';
+        if (latestDoc) {
+             const firstDoc = await prisma.document.findFirst({
+                where: { docDetailsId: docDetails.id, version: 1 },
+                select: { generatedById: true }
+            });
+            if (firstDoc) {
+                const creator = await prisma.user.findUnique({ where: { id: firstDoc.generatedById }, select: { name: true } });
+                createdByName = creator?.name || 'Unknown';
+            }
+        }
+
+        return res.json({ ...docDetails, createdByName });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+        
+
 
 export const updateDocumentSettings = async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -896,9 +1000,23 @@ export const getEligibleUsersForSharing = async (_req: AuthenticatedRequest, res
          docCommittee?.Members.forEach(m => {
             if (m.User) {
                 if (!usersMap.has(m.User.id)) {
-                    usersMap.set(m.User.id, { id: m.User.id, name: m.User.name, email: m.User.email, role: 'Documentation Team' });
+                     usersMap.set(m.User.id, { id: m.User.id, name: m.User.name, email: m.User.email, role: 'Documentation Team' });
                 }
             }
+         });
+
+         // Add Users with DOCUMENTATION role
+         const docRoleUsers = await prisma.userRole.findMany({
+             where: { role: 'DOCUMENTATION' },
+             include: { User: true }
+         });
+
+         docRoleUsers.forEach(ur => {
+             if (ur.User) {
+                 if (!usersMap.has(ur.User.id)) {
+                     usersMap.set(ur.User.id, { id: ur.User.id, name: ur.User.name, email: ur.User.email, role: 'Documentation Team' });
+                 }
+             }
          });
 
         return res.json(Array.from(usersMap.values()));
@@ -1201,6 +1319,55 @@ export const getDocumentByCode = async (req: AuthenticatedRequest, res: Response
         };
 
         return res.json(responseData);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    }
+};
+
+export const getUserSharedDocuments = async (req: AuthenticatedRequest, res: Response) => {
+    try {
+        const userId = req.user?.id;
+        if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+        const docs = await prisma.documentDetails.findMany({
+            where: {
+                documentUserAccesses: {
+                    some: { userId: userId }
+                }
+            },
+            include: {
+                Documents: { orderBy: { version: 'desc' } },
+                committee: true,
+                documentAccess: { include: { committee: true } },
+                documentUserAccesses: { include: { user: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        // Attach user info
+        const docsWithUser = await Promise.all(docs.map(async d => {
+            const latestDoc = d.Documents[0];
+            let createdByName = 'Unknown';
+            let revisedByName = null;
+            if (latestDoc) {
+                 const firstDoc = await prisma.document.findFirst({
+                    where: { docDetailsId: d.id, version: 1 },
+                    select: { generatedById: true }
+                });
+                if (firstDoc) {
+                    const creator = await prisma.user.findUnique({ where: { id: firstDoc.generatedById }, select: { name: true } });
+                    createdByName = creator?.name || 'Unknown';
+                }
+                if (latestDoc.version > 1) {
+                     const reviser = await prisma.user.findUnique({ where: { id: latestDoc.generatedById }, select: { name: true } });
+                    revisedByName = reviser?.name;
+                }
+            }
+            return { ...d, createdByName, revisedByName };
+        }));
+
+        return res.json(docsWithUser);
     } catch (error) {
         console.error(error);
         return res.status(500).json({ message: 'Internal Server Error' });

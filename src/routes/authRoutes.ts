@@ -13,6 +13,7 @@ import {
   getGoogleUrlHandler,
   googleLoginHandler,
   verifyGoogleRegistrationHandler,
+  verifyGooglePasswordResetHandler,
   checkEmailHandler,
 } from '../controllers/authController'
 import { validateRequest } from '../middlewares/validateRequest'
@@ -23,7 +24,9 @@ import {
   changePasswordSchema,
   resetPasswordRequestSchema,
   resetPasswordConfirmSchema,
+  verifyGoogleSchema,
 } from '../schemas/authSchemas'
+
 import { authenticateJWT } from '../middlewares/authMiddleware'
 import { z } from 'zod'
 
@@ -47,6 +50,8 @@ router.post('/logout', logout)
 router.get('/google/url', getGoogleUrlHandler)
 router.post('/google/login', validateRequest(z.object({ code: z.string() })), googleLoginHandler)
 router.post('/google/verify-registration', validateRequest(z.object({ code: z.string() })), verifyGoogleRegistrationHandler)
+// router.post('/google/verify-reset', validateRequest(z.object({ code: z.string() })), verifyGooglePasswordResetHandler)
+router.post('/google/verify-reset', validateRequest(verifyGoogleSchema), verifyGooglePasswordResetHandler)
 router.post('/check-email', validateRequest(z.object({ email: z.string().email() })), checkEmailHandler)
 
 export default router

@@ -6,8 +6,9 @@ export function validateRequest(schema: ZodTypeAny) {
     const result = schema.safeParse(req.body)
 
     if (!result.success) {
+      const errorMessages = result.error.issues.map((e) => e.message).join('. ')
       return res.status(400).json({
-        message: 'Validation failed',
+        message: errorMessages,
         errors: result.error.flatten().fieldErrors,
       })
     }

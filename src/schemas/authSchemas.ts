@@ -114,10 +114,15 @@ export const changePasswordSchema = z
     path: ['confirmNewPassword'],
   })
 
+export const verifyGoogleSchema = z.object({
+  code: z.string().min(1, 'Google auth code is required'),
+})
+
 export type SignupInput = z.infer<typeof signupSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>
 export type ResetPasswordRequestInput = z.infer<typeof resetPasswordRequestSchema>
 export type ResetPasswordConfirmInput = z.infer<typeof resetPasswordConfirmSchema>
+export type VerifyGoogleInput = z.infer<typeof verifyGoogleSchema>
 export type AccommodationInput = NonNullable<SignupInput['accommodation']>

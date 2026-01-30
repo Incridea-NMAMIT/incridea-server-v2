@@ -741,6 +741,45 @@ export async function verifyGoogleRegistration(code: string) {
     }
 }
 
+export async function verifyGooglePasswordReset(code: string) {
+    const { id_token, access_token } = await getGoogleTokens(code)
+    const googleUser = await getGoogleUser(id_token, access_token)
+
+    if (!googleUser.verified_email) {
+        throw new AppError('Google email not verified', 400)
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { email: googleUser.email.toLowerCase() },
+    })
+
+    if (!user) {
+         throw new AppError('User not found', 404)
+    }
+
+    // Create a verification token record
+    const verificationToken = await prisma.verificationToken.create({
+        data: {
+          userId: user.id,
+          type: 'RESET_PASSWORD',
+        },
+      })
+    
+     // Sign the token ID into the JWT. 
+     // We set JWT expiry to slightly longer than the business logic expiry (30m) to be safe, e.g., 40m.
+     const resetToken = jwt.sign(
+        { sub: verificationToken.id, purpose: 'password-reset' },
+        env.jwtSecret,
+        { expiresIn: '40m' }
+      )
+    
+     return { 
+        resetToken,
+        email: user.email,
+        name: user.name
+     }
+}
+
 export async function checkEmail(email: string) {
     const user = await prisma.user.findUnique({
         where: { email: email.toLowerCase() },

@@ -12,6 +12,7 @@ import {
   getGoogleUrl,
   verifyGoogleLogin,
   verifyGoogleRegistration,
+  verifyGooglePasswordReset,
   checkEmail,
   generateTokenWithSession,
 } from '../services/authService'
@@ -398,6 +399,16 @@ export async function verifyGoogleRegistrationHandler(req: Request, res: Respons
     try {
         const { code } = req.body
         const result = await verifyGoogleRegistration(code)
+        return res.status(200).json(result)
+    } catch (error) {
+       return next(error)
+    }
+}
+
+export async function verifyGooglePasswordResetHandler(req: Request, res: Response, next: NextFunction) {
+    try {
+        const { code } = req.body
+        const result = await verifyGooglePasswordReset(code)
         return res.status(200).json(result)
     } catch (error) {
        return next(error)

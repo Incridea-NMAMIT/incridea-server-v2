@@ -11,7 +11,7 @@ import type {
   RemoveMemberInput,
 } from '../schemas/committeeSchemas'
 
-const userSummarySelect = { id: true, name: true, email: true, phoneNumber: true }
+const userSummarySelect = { id: true, name: true, email: true, phoneNumber: true, profileImage: true }
 
 async function getUserRoles(userId: number) {
   const user = await prisma.user.findUnique({
@@ -514,6 +514,7 @@ export async function getCommitteeMembers(req: AuthenticatedRequest, res: Respon
             name: true,
             email: true,
             phoneNumber: true,
+            profileImage: true,
           },
         },
       },
@@ -525,6 +526,7 @@ export async function getCommitteeMembers(req: AuthenticatedRequest, res: Respon
       name: m.User.name,
       email: m.User.email,
       phoneNumber: m.User.phoneNumber,
+      profileImage: m.User.profileImage,
       designation: 'Member',
     }))
 
@@ -534,6 +536,7 @@ export async function getCommitteeMembers(req: AuthenticatedRequest, res: Respon
             name: committee.coHeadUser.name,
             email: committee.coHeadUser.email,
             phoneNumber: committee.coHeadUser.phoneNumber,
+            profileImage: committee.coHeadUser.profileImage,
             designation: 'Co-Head',
         })
     }
@@ -544,6 +547,7 @@ export async function getCommitteeMembers(req: AuthenticatedRequest, res: Respon
             name: committee.headUser.name,
             email: committee.headUser.email,
             phoneNumber: committee.headUser.phoneNumber,
+            profileImage: committee.headUser.profileImage,
             designation: 'Head',
         })
     }

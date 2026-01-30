@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { authenticateJWT } from '../middlewares/authMiddleware';
 import { upload } from '../config/multerConfig'; 
-import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments, shareDocumentWithCoHead, getSharedDocuments, getDocumentSettings, updateDocumentSettings, getEligibleUsersForSharing, shareDocumentWithUsers, editDocumentDetails, getDocumentUserAccess, removeDocumentUserAccess, getDocumentByCode } from '../controllers/documentController';
+import { createDocument, addRevision, getDocumentsByCommittee, getAllDocuments, shareDocumentWithCoHead, getSharedDocuments, getDocumentSettings, updateDocumentSettings, getEligibleUsersForSharing, shareDocumentWithUsers, editDocumentDetails, getDocumentUserAccess, removeDocumentUserAccess, getDocumentByCode, getUserSharedDocuments, getDocumentById } from '../controllers/documentController';
 
 const router = Router();
 
@@ -41,5 +41,10 @@ router.post('/edit-details', editDocumentDetails);
 // Access Management
 router.get('/:documentId/access', getDocumentUserAccess);
 router.delete('/:documentId/access/:targetUserId', removeDocumentUserAccess);
+
+router.get('/user-shared', getUserSharedDocuments);
+
+// View Document by ID (Link Sharing) - Must be last to avoid conflict
+router.get('/:id', getDocumentById);
 
 export default router;
