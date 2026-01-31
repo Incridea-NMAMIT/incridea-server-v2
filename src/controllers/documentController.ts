@@ -582,15 +582,9 @@ export const getAllDocuments = async (req: AuthenticatedRequest, res: Response) 
         } else {
             // Member
             // "can see all the files created the user" (General)
-            // "Classified ... visible to only the head" -> Member sees NONE? 
-            // Or Member sees Own Classified?
-            // "The people who just have documentation role can see the General Documents tab" -> Implies they DO NOT see Classified/Shared tabs.
-            // So Member sees: isClassified: false AND generatedByMe.
+            // Fix: Members should see ALL their own documents, regardless of classification.
             whereCondition = {
-                AND: [
-                    { isClassified: false },
-                    { Documents: { some: { generatedById: userId } } }
-                ]
+                Documents: { some: { generatedById: userId } }
             };
         }
 
@@ -834,6 +828,15 @@ export const getDocumentById = async (req: AuthenticatedRequest, res: Response) 
 
         // Access Control Logic
         let hasAccess = false;
+
+        // 0. Owner / Creator
+        const firstDoc = await prisma.document.findFirst({
+            where: { docDetailsId: docDetails.id, version: 1 },
+            select: { generatedById: true }
+        });
+        if (firstDoc?.generatedById === userId) {
+            hasAccess = true;
+        }
 
         // 1. Admin
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
