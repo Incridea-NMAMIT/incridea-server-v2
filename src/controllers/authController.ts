@@ -61,8 +61,8 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
 
     res.cookie('token', token, {
         httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? 'lax' : 'lax', // Lax is good for navigation
+        secure: true,
+        sameSite: 'none',
         domain: domain,
         path: '/',
         maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
@@ -132,8 +132,8 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
     res.cookie('token', token, {
        httpOnly: true,
-       secure: isProduction,
-       sameSite: 'lax', 
+       secure: true,
+       sameSite: 'none', 
        domain: domain,
        path: '/',
        maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
@@ -199,8 +199,8 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
 
     res.cookie('token', token, {
         httpOnly: true,
-        secure: isProduction,
-        sameSite: 'lax',
+        secure: true,
+        sameSite: 'none',
         domain: domain,
         path: '/',
         maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
@@ -374,8 +374,8 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
 
     res.clearCookie('token', {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       domain: domain,
       path: '/'
     })
@@ -444,8 +444,8 @@ export async function googleLoginHandler(req: Request, res: Response, next: Next
 
         res.cookie('token', token, {
             httpOnly: true,
-            secure: isProduction,
-            sameSite: 'lax',
+            secure: true,
+            sameSite: 'none',
             domain: domain,
             path: '/',
             maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
