@@ -10,7 +10,7 @@ export async function getStats(_req: AuthenticatedRequest, res: Response, next: 
   try {
     const boysVar = await prisma.accommodationRequests.findUnique({ where: { key: 'BoysAccCount' } })
     const girlsVar = await prisma.accommodationRequests.findUnique({ where: { key: 'GirlsAccCount' } })
-    
+
     // Default to 0 if not set
     const boysTotal = boysVar?.value || 0
     const girlsTotal = girlsVar?.value || 0
@@ -20,7 +20,7 @@ export async function getStats(_req: AuthenticatedRequest, res: Response, next: 
       where: {
         accommodationType: Gender.MALE,
         PaymentOrder: {
-            status: { in: [Status.SUCCESS, Status.PENDING] }
+          status: { in: [Status.SUCCESS, Status.PENDING] }
         }
       }
     })
@@ -29,7 +29,7 @@ export async function getStats(_req: AuthenticatedRequest, res: Response, next: 
       where: {
         accommodationType: Gender.FEMALE,
         PaymentOrder: {
-            status: { in: [Status.SUCCESS, Status.PENDING] }
+          status: { in: [Status.SUCCESS, Status.PENDING] }
         }
       }
     })
@@ -55,18 +55,18 @@ export async function updateVars(req: AuthenticatedRequest, res: Response, next:
     })
 
     if (!committee || (committee.headUserId !== userId && committee.coHeadUserId !== userId)) {
-        // Allow Admin/Organizer fallback if needed, but strict req says Head/CoHead.
-        // Let's check for Admin as well just in case.
-        const userRole = await prisma.userRole.findFirst({
-            where: { userId, role: 'ADMIN' }
-        })
-        if (!userRole) {
-             return res.status(403).json({ message: 'Forbidden: Accommodation Head/CoHead access only' })
-        }
+      // Allow Admin/Organizer fallback if needed, but strict req says Head/CoHead.
+      // Let's check for Admin as well just in case.
+      const userRole = await prisma.userRole.findFirst({
+        where: { userId, role: 'ADMIN' }
+      })
+      if (!userRole) {
+        return res.status(403).json({ message: 'Forbidden: Accommodation Head/CoHead access only' })
+      }
     }
 
     const { boysCount, girlsCount } = req.body
-    
+
     if (boysCount !== undefined) {
       await prisma.accommodationRequests.upsert({
         where: { key: 'BoysAccCount' },
@@ -105,7 +105,7 @@ export async function checkAvailability(req: AuthenticatedRequest, res: Response
       where: {
         accommodationType: gender as Gender,
         PaymentOrder: {
-             status: { in: [Status.SUCCESS, Status.PENDING] }
+          status: { in: [Status.SUCCESS, Status.PENDING] }
         }
       }
     })
@@ -128,18 +128,18 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
       checkOut: z.enum(['2026-03-05', '2026-03-06', '2026-03-07']),
       idCard: z.string().url(),
     }).refine((data) => data.checkOut >= data.checkIn, {
-        message: "Check-out date must be after or equal to check-in date",
-        path: ["checkOut"],
+      message: "Check-out date must be after or equal to check-in date",
+      path: ["checkOut"],
     })
-    
+
     const body = schema.parse(req.body)
 
     const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { gender: true }
+      where: { id: userId },
+      select: { gender: true }
     })
     if (!user || !user.gender) {
-        return res.status(400).json({ message: 'User gender not found. Please update your profile.' })
+      return res.status(400).json({ message: 'User gender not found. Please update your profile.' })
     }
 
     const gender = user.gender
@@ -152,7 +152,7 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
       where: {
         accommodationType: gender,
         PaymentOrder: {
-            status: { in: [Status.SUCCESS, Status.PENDING] }
+          status: { in: [Status.SUCCESS, Status.PENDING] }
         }
       }
     })
@@ -164,72 +164,72 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
     // Get PID for user
     const pid = await prisma.pID.findUnique({ where: { userId }, select: { id: true, pidCode: true } })
     if (!pid) {
-        return res.status(400).json({ message: 'PID not found for user. Please register for the fest first.' })
+      return res.status(400).json({ message: 'PID not found for user. Please register for the fest first.' })
     }
 
     const existingBooking = await prisma.accommodationBooking.findFirst({
-        where: { 
-            pidId: pid.id,
-            PaymentOrder: {
-                status: { in: [Status.SUCCESS, Status.PENDING] }
-            }
+      where: {
+        pidId: pid.id,
+        PaymentOrder: {
+          status: { in: [Status.SUCCESS, Status.PENDING] }
         }
+      }
     })
 
     if (existingBooking) {
-        return res.status(400).json({ message: 'You have already registered. Please check email for receipt which serves as proof of payment' })
+      return res.status(400).json({ message: 'You have already registered. Please check email for receipt which serves as proof of payment' })
     }
 
     // Create Booking and Payment Order
     const booking = await prisma.$transaction(async (tx) => {
-       const amount = 200 
-       const amountInRupees = Math.ceil(amount / (1 - 0.0236))
-       const amountInPaisa = amountInRupees * 100
+      const amount = 200
+      const amountInRupees = Math.ceil(amount / (1 - 0.0236))
+      const amountInPaisa = amountInRupees * 100
 
-       // Create Razorpay Order with Accommodation credentials
-       const order = await razorpayAccommodation.orders.create({
-           amount: amountInPaisa,
-           currency: 'INR',
-           receipt: `acc_ind_${userId}_${Date.now()}`,
-           notes: {
-               type: PaymentType.ACC_REGISTRATION,
-               userId: String(userId),
-               bookingType: 'INDIVIDUAL',
-               pid: pid.pidCode
-           }
-       })
+      // Create Razorpay Order with Accommodation credentials
+      const order = await razorpayAccommodation.orders.create({
+        amount: amountInPaisa,
+        currency: 'INR',
+        receipt: `acc_ind_${userId}_${Date.now()}`,
+        notes: {
+          type: PaymentType.ACC_REGISTRATION,
+          userId: String(userId),
+          bookingType: 'INDIVIDUAL',
+          pid: pid.pidCode
+        }
+      })
 
-       if (!order) throw new Error('Failed to create payment order')
-       const orderId = order.id
+      if (!order) throw new Error('Failed to create payment order')
+      const orderId = order.id
 
-       // Save to PaymentOrder table instead of AccommodationPayment
-       await tx.paymentOrder.create({
-         data: {
-           orderId: order.id,
-           amount: amount,
-           collectedAmount: amountInRupees,
-           status: Status.PENDING,
-           type: PaymentType.ACC_REGISTRATION,
-           userId,
-           PID: pid.pidCode,
-           paymentDataJson: order as any
-         }
-       })
+      // Save to PaymentOrder table instead of AccommodationPayment
+      await tx.paymentOrder.create({
+        data: {
+          orderId: order.id,
+          amount: amount,
+          collectedAmount: amountInRupees,
+          status: Status.PENDING,
+          type: PaymentType.ACC_REGISTRATION,
+          userId,
+          PID: pid.pidCode,
+          paymentDataJson: order as any
+        }
+      })
 
-       const booking = await tx.accommodationBooking.create({
-         data: {
-           pidId: pid.id,
-           accommodationType: gender,
-           checkIn: new Date(body.checkIn),
-           checkOut: new Date(body.checkOut),
-           idCard: body.idCard,
+      const booking = await tx.accommodationBooking.create({
+        data: {
+          pidId: pid.id,
+          accommodationType: gender,
+          checkIn: new Date(body.checkIn),
+          checkOut: new Date(body.checkOut),
+          idCard: body.idCard,
 
-           paymentOrderId: order.id
-         }
-       })
-       
-       // Return the ACCOMMODATION KEY ID
-       return { booking, payment: { ...booking, key: process.env.RAZORPAY_SEC_KEY_ID, currency: order.currency, amount: order.amount, orderId: orderId } }
+          paymentOrderId: order.id
+        }
+      })
+
+      // Return the ACCOMMODATION KEY ID
+      return { booking, payment: { ...booking, key: process.env.RAZORPAY_SEC_KEY_ID, currency: order.currency, amount: order.amount, orderId: orderId } }
     })
 
     return res.json(booking)
@@ -264,11 +264,11 @@ export async function getBookings(req: Request, res: Response, next: NextFunctio
       where,
       include: {
         PID: {
-            include: {
-                User: {
-                    select: { name: true, email: true, phoneNumber: true, collegeId: true, College: { select: { name: true } } }
-                }
+          include: {
+            User: {
+              select: { name: true, email: true, phoneNumber: true, collegeId: true, College: { select: { name: true } } }
             }
+          }
         },
         PaymentOrder: true
       },
