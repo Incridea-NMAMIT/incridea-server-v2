@@ -1088,7 +1088,7 @@ export const shareDocumentWithUsers = async (req: AuthenticatedRequest, res: Res
 
 export const editDocumentDetails = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { documentId, title, description } = req.body;
+        const { documentId, title, description, committee } = req.body;
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -1151,19 +1151,17 @@ export const editDocumentDetails = async (req: AuthenticatedRequest, res: Respon
              return res.status(403).json({ message: 'Forbidden' });
         }
         
-        // If I strictly follow "When a comm head shares ... with doc role user, the doc role user can revise":
-        // It implies Doc Role users CANNOT revise UNLESS shared. 
-        // So 'hasDocRole' checks alone might be too loose for "Revise" (which is adding a new version).
-        // But for "Edit Details" (point 5)? 
-        // "edited by the DOCUMENTATION role or the shared committee head"
-        // Again, "shared committee head" suggests receiver.
-        // So likely: Access = Edit Rights.
-        
-        // I will stick to: Owner OR Direct Access OR Admin.
+        const updateData: any = { title, description };
+
+        if (committee) {
+             const targetCommittee = await prisma.committee.findUnique({ where: { name: committee as CommitteeName } });
+             if (!targetCommittee) return res.status(400).json({ message: 'Invalid committee' });
+             updateData.committeeId = targetCommittee.id;
+        }
 
         await prisma.documentDetails.update({
              where: { id: Number(documentId) },
-             data: { title, description }
+             data: updateData
         });
 
         return res.json({ message: 'Document updated successfully' });
