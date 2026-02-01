@@ -13,6 +13,7 @@ const REG_FEE_KEYS = [
   'externalRegistrationFeeOnSpot',
   'internalRegistrationOnSpot',
   'alumniRegistrationFee',
+  'merchTshirtPrice',
 ] as const
 
 type FeeKey = (typeof REG_FEE_KEYS)[number]

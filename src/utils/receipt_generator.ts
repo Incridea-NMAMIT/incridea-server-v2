@@ -127,13 +127,13 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
 
   // Load template
   const templateBytes = await fs.readFile(TEMPLATE_PATH);
-  
+
   // Create a new PDF document
   const pdfDoc = await PDFDocument.create();
-  
+
   // Embed the template image
   const templateImage = await pdfDoc.embedPng(templateBytes);
-  
+
   const width = 2480;
   const height = 3100;
 
@@ -196,6 +196,24 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
   let paymentTypeStr = 'Fest Registration';
   if (orderData.type === 'ACC_REGISTRATION') {
     paymentTypeStr = 'Accomodation Fee Payment';
+  } else if (orderData.type === 'MERCH_PAYMENT' || orderData.type === 'MERCH') {
+    paymentTypeStr = 'Merchandise Payment';
+
+    // Attempt to extract size from payment notes
+    try {
+      let notes: any = {};
+      if (orderData.paymentData && typeof orderData.paymentData === 'object') {
+        if (orderData.paymentData.notes) notes = orderData.paymentData.notes;
+        else if (orderData.paymentData.entity && orderData.paymentData.entity.notes) notes = orderData.paymentData.entity.notes;
+      }
+
+      // If we have size
+      if (notes.size) {
+        paymentTypeStr += ` (T-Shirt Size: ${notes.size})`;
+      }
+    } catch (e) {
+      // Ignore extraction error
+    }
   }
   drawText(paymentTypeStr, paymentDetailsLeftMargin, paymentDetailsTopStart);
 
@@ -274,7 +292,7 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     amountDetailsLeftMargin,
     amountDetailsTopStart
   );
-  
+
   const words = numberToWords(amount) + ' Only';
   drawText(
     words,
@@ -288,11 +306,11 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
 
   const qrBuffer = await generateQrCode(qrContent);
   const qrImage = await pdfDoc.embedPng(qrBuffer);
-  
+
   const qrCodeX = 1896;
   const qrCodeY = 1750;
   const qrCodeSize = 350;
-  
+
   page.drawImage(qrImage, {
     x: qrCodeX,
     y: qrCodeY,
@@ -307,22 +325,22 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
   if (pid && pid !== '-') {
     await log(`Drawing Barcode for PID: ${pid}`);
     const barcodeBuffer = await bwipjs.toBuffer({
-        bcid: 'code128',
-        text: pid,
-        scale: 1, 
-        height: 10,
-        includetext: false, 
-        textxalign: 'center',
+      bcid: 'code128',
+      text: pid,
+      scale: 1,
+      height: 10,
+      includetext: false,
+      textxalign: 'center',
     });
-    
+
     const barcodeImage = await pdfDoc.embedPng(barcodeBuffer);
     const barcodeDims = barcodeImage.scale(2.5); // Arbitrary scaling to match legacy look roughly
-    
+
     page.drawImage(barcodeImage, {
-        x: barcodeX,
-        y: barcodeY,
-        width: barcodeDims.width,
-        height: 80, // matched to barHeight
+      x: barcodeX,
+      y: barcodeY,
+      width: barcodeDims.width,
+      height: 80, // matched to barHeight
     });
   }
 
@@ -332,59 +350,59 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
 
 
 export async function generateReceipt(orderData: any, userData: any): Promise<string> {
-    await log(`Starting receipt generation for ${orderData.orderId}`);
+  await log(`Starting receipt generation for ${orderData.orderId}`);
 
-    const pdfBuffer = await generateReceiptPdf(orderData, userData);
+  const pdfBuffer = await generateReceiptPdf(orderData, userData);
 
-    await fs.mkdir(GENERATED_DIR, { recursive: true });
-    const filename = `receipt_${orderData.orderId}.pdf`;
-    const filePath = path.join(GENERATED_DIR, filename);
+  await fs.mkdir(GENERATED_DIR, { recursive: true });
+  const filename = `receipt_${orderData.orderId}.pdf`;
+  const filePath = path.join(GENERATED_DIR, filename);
 
-    await fs.writeFile(filePath, pdfBuffer);
-    await log(`Receipt generated at: ${filePath}`);
-    
-    return filePath;
+  await fs.writeFile(filePath, pdfBuffer);
+  await log(`Receipt generated at: ${filePath}`);
+
+  return filePath;
 }
 
 // Only run main if this file is the entry point
 if (require.main === module) {
-    (async () => {
-        const inputFile = process.argv[2];
-        if (!inputFile) {
-            console.error('Usage: ts-node receipt_generator.ts <json_file_or_string>');
-            process.exit(1);
-        }
+  (async () => {
+    const inputFile = process.argv[2];
+    if (!inputFile) {
+      console.error('Usage: ts-node receipt_generator.ts <json_file_or_string>');
+      process.exit(1);
+    }
 
-        try {
-            let data;
-            if (
-            await fs
-                .stat(inputFile)
-                .then(() => true)
-                .catch(() => false)
-            ) {
-            const fileContent = await fs.readFile(inputFile, 'utf-8');
-            data = JSON.parse(fileContent);
-            } else {
-            data = JSON.parse(inputFile);
-            }
+    try {
+      let data;
+      if (
+        await fs
+          .stat(inputFile)
+          .then(() => true)
+          .catch(() => false)
+      ) {
+        const fileContent = await fs.readFile(inputFile, 'utf-8');
+        data = JSON.parse(fileContent);
+      } else {
+        data = JSON.parse(inputFile);
+      }
 
-            const orderData = data.order_data;
-            const userData = data.user_data;
+      const orderData = data.order_data;
+      const userData = data.user_data;
 
-            if (!orderData || !userData) {
-            await log('Invalid JSON data: Missing order_data or user_data');
-            process.exit(1);
-            }
+      if (!orderData || !userData) {
+        await log('Invalid JSON data: Missing order_data or user_data');
+        process.exit(1);
+      }
 
-            const filePath = await generateReceipt(orderData, userData);
-            console.log(filePath); // Output logic for script usage matches original
-            
-        } catch (error) {
-            await log(`Error: ${error}`);
-            console.error(error);
-            process.exit(1);
-        }
-    })();
+      const filePath = await generateReceipt(orderData, userData);
+      console.log(filePath); // Output logic for script usage matches original
+
+    } catch (error) {
+      await log(`Error: ${error}`);
+      console.error(error);
+      process.exit(1);
+    }
+  })();
 }
 

@@ -23,7 +23,7 @@ export const receiptWorker = new Worker(
 
     try {
       if (userId) {
-          io.to(`user-${userId}`).emit('generating_receipt');
+        io.to(`user-${userId}`).emit('generating_receipt');
       }
 
       // 1. Generate PDF Buffer
@@ -35,14 +35,14 @@ export const receiptWorker = new Worker(
 
       // 2. Upload using Buffer with Timeout (30s)
       console.log(`[ReceiptWorker] Uploading PDF for ${orderId}...`);
-      
+
       const uploadPromise = uploadReceipt({ buffer: receiptBuffer, name: receiptFilename });
-      const timeoutPromise = new Promise<string | null>((_, reject) => 
-          setTimeout(() => reject(new Error('Upload timed out after 30s')), 30000)
+      const timeoutPromise = new Promise<string | null>((_, reject) =>
+        setTimeout(() => reject(new Error('Upload timed out after 30s')), 30000)
       );
 
       const receiptUrl = await Promise.race([uploadPromise, timeoutPromise]);
-      
+
       if (!receiptUrl) throw new Error('Failed to upload receipt (returned null)');
 
       console.log(`[ReceiptWorker] Upload successful: ${receiptUrl}`);
@@ -57,15 +57,18 @@ export const receiptWorker = new Worker(
       if (userId) {
         io.to(`user-${userId}`).emit('receipt_generated', { receiptUrl });
       }
-      
+
       // 4. Send Email
       try {
-        const paymentType = orderData.type === 'ACC_REGISTRATION' 
-          ? 'Accommodation Fee' 
-          : 'Incridea Fest Registration Fee'; 
+        let paymentType = 'Incridea Fest Registration Fee';
+        if (orderData.type === 'ACC_REGISTRATION') {
+          paymentType = 'Accommodation Fee';
+        } else if (orderData.type === 'MERCH_PAYMENT') {
+          paymentType = 'Merchandise Order';
+        }
 
         const emailHtml = getPaymentReceiptEmailHtml(userData.name, paymentType);
-        
+
         await sendEmail(
           userData.email,
           'Payment Receipt - Incridea',
@@ -74,7 +77,7 @@ export const receiptWorker = new Worker(
           [
             {
               filename: receiptFilename,
-              content: receiptBuffer, 
+              content: receiptBuffer,
             },
           ]
         );

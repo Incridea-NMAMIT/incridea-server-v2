@@ -82,6 +82,7 @@ model User {
 
   documentUserAccesses DocumentUserAccess[]
   sessions             Session[]
+  MerchOrder           MerchOrder[]
 
   @@index([collegeId])
   @@index([id])
@@ -310,6 +311,7 @@ model PaymentOrder {
   PID                   String?
   PIDData               PID?                   @relation("AccommodationPayments", fields: [PID], references: [pidCode], onDelete: Cascade)
   accommodationBookings AccommodationBooking[]
+  MerchOrder            MerchOrder?
 
   @@index([userId])
 }
@@ -647,6 +649,7 @@ enum ProniteDay {
 enum PaymentType {
   FEST_REGISTRATION
   ACC_REGISTRATION
+  MERCH_PAYMENT
 }
 
 enum Role {
@@ -1024,4 +1027,21 @@ model ProniteVolunteer {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, proniteDay])
+}
+
+model MerchOrder {
+  id String @id @default(cuid())
+
+  paymentOrderId String       @unique
+  PaymentOrder   PaymentOrder @relation(fields: [paymentOrderId], references: [orderId])
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  semester String
+  branch   String
+  size     String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

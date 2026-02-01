@@ -60,10 +60,10 @@ async function ensureCollege(data) {
   } else {
     // Optionally update the existing college type if needed
     if (existing.type !== data.type) {
-       await prisma.college.update({
-          where: { id: existing.id },
-          data: { type: data.type }
-       })
+      await prisma.college.update({
+        where: { id: existing.id },
+        data: { type: data.type }
+      })
     }
   }
 }
@@ -79,31 +79,31 @@ function parseCSV(filePath) {
   const fileContent = fs.readFileSync(filePath, 'utf-8')
   const lines = fileContent.trim().split('\n')
   const headers = lines[0].trim().split(',')
-  
+
   // Basic CSV parsing handling quoted strings with commas
   return lines.slice(1).map(line => {
     const row = []
     let current = ''
     let inQuotes = false
-    
+
     for (let i = 0; i < line.length; i++) {
-        const char = line[i]
-        if (char === '"') {
-            inQuotes = !inQuotes
-        } else if (char === ',' && !inQuotes) {
-            row.push(current.trim())
-            current = ''
-        } else {
-            current += char
-        }
+      const char = line[i]
+      if (char === '"') {
+        inQuotes = !inQuotes
+      } else if (char === ',' && !inQuotes) {
+        row.push(current.trim())
+        current = ''
+      } else {
+        current += char
+      }
     }
     row.push(current.trim())
-    
+
     return row.reduce((acc, val, index) => {
       const header = headers[index] ? headers[index].trim() : `col_${index}`
       // Remove surrounding quotes if present
       if (val.startsWith('"') && val.endsWith('"')) {
-          val = val.slice(1, -1)
+        val = val.slice(1, -1)
       }
       acc[header] = val
       return acc
@@ -127,6 +127,7 @@ async function main() {
     'internalRegistrationOnSpot',
     'alumniRegistrationFee',
     'accomodationFee',
+    'merchTshirtPrice',
   ]
 
   await Promise.all(variableSeeds.map((key) => ensureVariable(key, '0')))
@@ -147,22 +148,22 @@ async function main() {
 
   console.log('Seeding colleges...')
   const csvPath = path.join(__dirname, 'colleges_export.csv')
-  
+
   if (fs.existsSync(csvPath)) {
-      const colleges = parseCSV(csvPath)
-      console.log(`Found ${colleges.length} colleges in CSV.`)
-      
-      for (const college of colleges) {
-          if (college.Name && college.Type) {
-             await ensureCollege({
-                 name: college.Name,
-                 type: college.Type // Assumes Type matches enum or string in DB
-             })
-          }
+    const colleges = parseCSV(csvPath)
+    console.log(`Found ${colleges.length} colleges in CSV.`)
+
+    for (const college of colleges) {
+      if (college.Name && college.Type) {
+        await ensureCollege({
+          name: college.Name,
+          type: college.Type // Assumes Type matches enum or string in DB
+        })
       }
-      console.log('Colleges seeded successfully.')
+    }
+    console.log('Colleges seeded successfully.')
   } else {
-      console.warn(`CSV file not found at ${csvPath}`)
+    console.warn(`CSV file not found at ${csvPath}`)
   }
 }
 
