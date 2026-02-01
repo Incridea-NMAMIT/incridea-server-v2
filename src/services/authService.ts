@@ -215,6 +215,7 @@ export async function createUserWithProfile(payload: SignupInput) {
       Judges: true,
       PID: true,
       HeadOfCommittee: true,
+      College: true,
     },
   }) as Promise<
     typeof user & {
@@ -225,6 +226,7 @@ export async function createUserWithProfile(payload: SignupInput) {
       Judges: { id: number }[]
       PID: { pidCode: string } | null
       HeadOfCommittee: any[]
+      College: { name: string; id: number; type: CollegeType; createdAt: Date; updatedAt: Date }
     }
   >
 }
@@ -254,6 +256,11 @@ export async function verifyOtpForUser(email: string, otp: string) {
         select: { id: true },
       },
       collegeId: true,
+      College: {
+        select: {
+          name: true,
+        },
+      },
       isVerified: true,
       otpHash: true,
       otpExpiresAt: true,
@@ -302,7 +309,7 @@ export async function verifyOtpForUser(email: string, otp: string) {
       otpHash: null,
       otpExpiresAt: null,
     },
-    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true, PID: true, HeadOfCommittee: true },
+    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true, PID: true, HeadOfCommittee: true, College: true },
   })
 
   return updated
@@ -371,6 +378,11 @@ export async function authenticateUser(email: string, password: string) {
         },
       },
       collegeId: true,
+      College: {
+        select: {
+          name: true,
+        },
+      },
       isVerified: true,
       Alumni: {
         select: {
@@ -422,7 +434,7 @@ export async function authenticateUser(email: string, password: string) {
 export async function getUserById(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true, PID: true, HeadOfCommittee: true },
+    include: { Alumni: true, UserRoles: true, BranchRep: true, Organisers: true, Judges: true, PID: true, HeadOfCommittee: true, College: true },
   })
   if (!user) {
     throw new AppError('User not found', 404)
@@ -694,6 +706,7 @@ export async function verifyGoogleLogin(code: string) {
             Judges: true,
             PID: true,
             HeadOfCommittee: true,
+            College: true,
         },
     })
 

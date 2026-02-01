@@ -139,6 +139,10 @@ async function main() {
 
   await Promise.all(eventDaySeeds.map(({ key, value }) => ensureVariable(key, value)))
 
+  // Pronite Seeds
+  await ensureVariable('ProniteDay', 'Day1')
+  await ensureSetting('startScanning', false)
+
   await ensureCommittees()
 
   console.log('Seeding colleges...')

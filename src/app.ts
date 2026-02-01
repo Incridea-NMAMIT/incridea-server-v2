@@ -86,8 +86,11 @@ import internalRoutes from './routes/internalRoutes'
 
 app.use('/api/accommodation', accommodationRoutes)
 app.use('/api/stats', statsRoutes)
-app.use('/api/internal', internalRoutes)
 
+import proniteRoutes from './routes/proniteRoutes'
+app.use('/api/pronite', proniteRoutes)
+
+app.use('/api/internal', internalRoutes)
 
 
 app.use((_req, res) => {

@@ -69,6 +69,7 @@ model User {
   RefreshTokens     RefreshToken[]
   CertificateIssue  CertificateIssue[]
   VerificationToken VerificationToken[]
+  ProniteVolunteers ProniteVolunteer[]
   PronitePass       PronitePass[]
 
   createdAt DateTime @default(now())
@@ -486,13 +487,21 @@ model PronitePass {
 
   proniteDay ProniteDay
 
+  pidId Int?
+  PID   PID? @relation(fields: [pidId], references: [id], onDelete: Cascade)
+
+  // Kept for backward compatibility to avoid data loss
   userId Int
   User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  scannedByVolunteerId Int?
+  ScannedBy            ProniteVolunteer? @relation(fields: [scannedByVolunteerId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([userId, proniteDay])
+  @@index([pidId])
   @@index([userId])
 }
 
@@ -750,6 +759,7 @@ model PID {
   LedTeams             Team[]                @relation("TeamLeader")
   winners              Winners?
   AccommodationBooking AccommodationBooking?
+  PronitePasses        PronitePass[]
 
   @@index([userId])
   @@index([pidCode])
@@ -984,4 +994,34 @@ model DocumentationSetting {
   value     Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ProniteBooth {
+  id            Int    @id @default(autoincrement())
+  location      String
+  assignedBands Int    @default(0)
+
+  AssignedVolunteers ProniteVolunteer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProniteVolunteer {
+  id Int @id @default(autoincrement())
+
+  userId Int
+  User   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  boothId Int
+  Booth   ProniteBooth @relation(fields: [boothId], references: [id], onDelete: Cascade)
+
+  proniteDay ProniteDay
+
+  ScannedPasses PronitePass[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, proniteDay])
 }
