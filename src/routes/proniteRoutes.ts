@@ -50,10 +50,12 @@ router.delete('/booth/:id', authenticateJWT, requireAdmin, proniteController.del
 router.post('/volunteer', authenticateJWT, requireAdmin, proniteController.assignVolunteer)
 router.get('/volunteer', authenticateJWT, requireAdmin, proniteController.getAssignedVolunteers)
 router.delete('/volunteer/:id', authenticateJWT, requireAdmin, proniteController.unassignVolunteer)
+router.get('/users', authenticateJWT, requireAdmin, proniteController.searchUsers)
 
 
 
 // --- Volunteer Routes ---
+router.get('/status', authenticateJWT, proniteController.getVolunteerStatus)
 router.get('/user/:pid', authenticateJWT, authorizeProniteVolunteer, proniteController.getUserByPid)
 router.post('/scan', authenticateJWT, authorizeProniteVolunteer, proniteController.scanUser)
 

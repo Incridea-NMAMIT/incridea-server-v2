@@ -249,3 +249,64 @@ export async function scanUser(req: AuthenticatedRequest, res: Response, next: N
         return next(error)
     }
 }
+
+export async function searchUsers(req: Request, res: Response, next: NextFunction) {
+    try {
+        const q = req.query.q as string
+        if (!q || q.length < 3) return res.json({ users: [] })
+
+        const users = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { name: { contains: q, mode: 'insensitive' } },
+                    { email: { contains: q, mode: 'insensitive' } }
+                ]
+            },
+            take: 10,
+            select: { id: true, name: true, email: true, phoneNumber: true }
+        })
+        return res.json({ users })
+    } catch (error) {
+        return next(error)
+    }
+}
+
+export async function getVolunteerStatus(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const userId = req.user!.id
+        
+        // 1. Get Settings
+        const dayVar = await prisma.variable.findUnique({ where: { key: 'ProniteDay' } })
+        const scanningSetting = await prisma.setting.findUnique({ where: { key: 'startScanning' } })
+        
+        const currentDay = dayVar?.value as ProniteDay
+        const isScanningEnabled = scanningSetting?.value ?? false
+
+        if (!currentDay) {
+            return res.json({ authorized: false, scanningEnabled: false, message: 'Pronite Day not configured' })
+        }
+
+        // 2. Check Authorization
+        const volunteer = await prisma.proniteVolunteer.findUnique({
+            where: {
+                userId_proniteDay: {
+                    userId,
+                    proniteDay: currentDay
+                }
+            }
+        })
+
+        if (!volunteer) {
+            return res.json({ authorized: false, scanningEnabled: isScanningEnabled, message: 'You are not a volunteer for today' })
+        }
+
+        return res.json({ 
+            authorized: true, 
+            scanningEnabled: isScanningEnabled,
+            day: currentDay 
+        })
+
+    } catch (error) {
+        return next(error)
+    }
+}
