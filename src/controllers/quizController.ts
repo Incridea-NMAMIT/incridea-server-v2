@@ -7,7 +7,7 @@ export const getQuizPublic = async (req: AuthenticatedRequest, res: Response, ne
     try {
         const { quizId } = req.params
         const user = req.user
-        
+
         if (!user) {
             return res.status(401).json({ message: 'Unauthorized' })
         }
@@ -64,15 +64,15 @@ export const getQuizPublic = async (req: AuthenticatedRequest, res: Response, ne
 
         // Check for existing score/attempt
         const score = await prisma.quizScore.findUnique({
-             where: {
+            where: {
                 teamId_quizId: {
                     teamId: teamMember.teamId,
                     quizId
                 }
-             }
+            }
         })
 
-        return res.json({ 
+        return res.json({
             quiz: {
                 id: quiz.id,
                 name: quiz.name,
@@ -99,8 +99,8 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
-         // Verify team membership
-         const isMember = await prisma.teamMember.findFirst({
+        // Verify team membership
+        const isMember = await prisma.teamMember.findFirst({
             where: {
                 userId,
                 teamId
@@ -108,7 +108,7 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
         })
 
         if (!isMember) {
-             return res.status(403).json({ message: 'You are not a member of this team' })
+            return res.status(403).json({ message: 'You are not a member of this team' })
         }
 
         const quiz = await prisma.quiz.findUnique({ where: { id: quizId } })
@@ -150,9 +150,9 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
 
         // Notify team that quiz has started
         try {
-            getIO().to(`team-${teamId}`).emit('QUIZ_STARTED', { 
+            getIO().to(`team-${teamId}`).emit('QUIZ_STARTED', {
                 quizId,
-                attemptStartTime: newScore.attemptStartTime 
+                attemptStartTime: newScore.attemptStartTime
             })
         } catch (error) {
             // eslint-disable-next-line no-console
@@ -183,16 +183,16 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
         })
 
         if (!isMember) {
-             return res.status(403).json({ message: 'You are not a member of this team' })
+            return res.status(403).json({ message: 'You are not a member of this team' })
         }
 
         // Retrieve quiz to check timing
         const quiz = await prisma.quiz.findUnique({ where: { id: quizId } })
         if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
-        
+
         const now = new Date()
         if (now > quiz.endTime) return res.status(400).json({ message: 'Quiz time is over' })
-        
+
         await prisma.quizSubmission.create({
             data: {
                 teamId,
@@ -203,7 +203,7 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
         return res.json({ success: true })
 
     } catch (error) {
-       return next(error)
+        return next(error)
     }
 }
 
@@ -215,7 +215,7 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
-         // Verify team membership
+        // Verify team membership
         const isMember = await prisma.teamMember.findFirst({
             where: {
                 userId,
@@ -224,10 +224,10 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
         })
 
         if (!isMember) {
-             return res.status(403).json({ message: 'You are not a member of this team' })
+            return res.status(403).json({ message: 'You are not a member of this team' })
         }
 
-        const quiz = await prisma.quiz.findUnique({ 
+        const quiz = await prisma.quiz.findUnique({
             where: { id: quizId },
             include: { Questions: { include: { options: true } } }
         })
@@ -246,7 +246,7 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
         // Calculate Score
         // 1. Get all submissions for this team and quiz options
         const questionIds = quiz.Questions.map(q => q.id)
-        
+
         const submissions = await prisma.quizSubmission.findMany({
             where: {
                 teamId,
@@ -260,13 +260,13 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
                 Options: true
             },
             orderBy: {
-                createdAt: 'asc' 
+                createdAt: 'asc'
             }
         })
 
         // Map questionId -> latest submission isCorrect
         const linkMap = new Map<string, boolean>()
-        
+
         submissions.forEach(sub => {
             linkMap.set(sub.Options.questionId, sub.Options.isAnswer)
         })
@@ -275,18 +275,18 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
         linkMap.forEach((isCorrect) => {
             if (isCorrect) score += quiz.points
         })
-        
+
         // Calculate Time Taken
         const now = new Date()
         let timeTaken = 0
-        
+
         if (currentScore?.attemptStartTime) {
-             timeTaken = (now.getTime() - new Date(currentScore.attemptStartTime).getTime()) / 1000
+            timeTaken = (now.getTime() - new Date(currentScore.attemptStartTime).getTime()) / 1000
         } else {
-             // Fallback if no start time found (should generally not happen with new flow)
-             // Maybe default to max duration or 0? 
-             // Using start of quiz as fallback
-             timeTaken = (now.getTime() - new Date(quiz.startTime).getTime()) / 1000
+            // Fallback if no start time found (should generally not happen with new flow)
+            // Maybe default to max duration or 0? 
+            // Using start of quiz as fallback
+            timeTaken = (now.getTime() - new Date(quiz.startTime).getTime()) / 1000
         }
 
         if (timeTaken < 0) timeTaken = 0
@@ -304,7 +304,7 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
                 quizId,
                 score,
                 timeTaken,
-                allowUser: false 
+                allowUser: false
             },
             update: {
                 score,
@@ -313,7 +313,7 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
         })
 
         try {
-            getIO().to(`team-${teamId}`).emit('QUIZ_FINISHED', { 
+            getIO().to(`team-${teamId}`).emit('QUIZ_FINISHED', {
                 quizId,
                 score
             })

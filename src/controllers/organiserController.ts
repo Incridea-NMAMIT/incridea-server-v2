@@ -149,25 +149,25 @@ export async function getOrganiserEventDetails(req: AuthenticatedRequest, res: R
           },
         },
         Rounds: {
-            orderBy: {
-                roundNo: 'asc'
+          orderBy: {
+            roundNo: 'asc'
+          },
+          include: {
+            Judges: {
+              include: {
+                User: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    phoneNumber: true
+                  }
+                }
+              }
             },
-            include: {
-                Judges: {
-                    include: {
-                        User: {
-                            select: {
-                                id: true,
-                                name: true,
-                                email: true,
-                                phoneNumber: true
-                            }
-                        }
-                    }
-                },
-                Criteria: true,
-                Quiz: true
-            }
+            Criteria: true,
+            Quiz: true
+          }
         }
       },
     })
@@ -194,19 +194,19 @@ export async function createTeam(req: AuthenticatedRequest, res: Response, next:
 
     const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
     if (!isOrganiser) {
-        const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-        const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-        if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     // Check if team name exists
     const existingTeam = await prisma.team.findUnique({
-        where: {
-            name_eventId: {
-                name: payload.name,
-                eventId
-            }
+      where: {
+        name_eventId: {
+          name: payload.name,
+          eventId
         }
+      }
     })
     if (existingTeam) return res.status(400).json({ message: 'Team name already exists' })
 
@@ -217,15 +217,15 @@ export async function createTeam(req: AuthenticatedRequest, res: Response, next:
         confirmed: true, // Organisers create confirmed teams
       },
       include: {
-          TeamMembers: {
+        TeamMembers: {
+          include: {
+            PID: {
               include: {
-                  PID: {
-                    include: {
-                        User: true
-                    }
-                  }
+                User: true
               }
+            }
           }
+        }
       }
     })
 
@@ -253,9 +253,9 @@ export async function deleteTeam(req: AuthenticatedRequest, res: Response, next:
 
     const isOrganiser = await ensureOrganiserForEvent(userId, team.eventId)
     if (!isOrganiser) {
-        const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-        const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-        if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     await prisma.team.delete({ where: { id: teamId } })
@@ -282,62 +282,62 @@ export async function addTeamMember(req: AuthenticatedRequest, res: Response, ne
     const { userId: targetUserId } = req.body as AddTeamMemberInput
 
     const targetPid = await prisma.pID.findUnique({
-        where: { userId: targetUserId },
-        include: { User: true }
+      where: { userId: targetUserId },
+      include: { User: true }
     })
     if (!targetPid) return res.status(404).json({ message: 'User not registered for fest (No PID)' })
 
-    const team = await prisma.team.findUnique({ 
-        where: { id: teamId },
-        include: { Event: true, TeamMembers: { include: { PID: { include: { User: true } } } } }
+    const team = await prisma.team.findUnique({
+      where: { id: teamId },
+      include: { Event: true, TeamMembers: { include: { PID: { include: { User: true } } } } }
     })
     if (!team) return res.status(404).json({ message: 'Team not found' })
 
     const isOrganiser = await ensureOrganiserForEvent(userId, team.eventId)
     if (!isOrganiser) {
-        const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-        const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-        if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     // Validations consistent with source
     if (team.TeamMembers.length >= team.Event.maxTeamSize) {
-        return res.status(400).json({ message: 'Team is full' })
+      return res.status(400).json({ message: 'Team is full' })
     }
 
     // Check if user is already in a team for this event
     if (team.Event.eventType !== 'INDIVIDUAL_MULTIPLE_ENTRY' && team.Event.eventType !== 'TEAM_MULTIPLE_ENTRY') {
-         const existingRegistration = await prisma.teamMember.findFirst({
-            where: {
-                pidId: targetPid.id,
-                Team: {
-                    eventId: team.eventId
-                }
-            }
-        })
-        if (existingRegistration) return res.status(400).json({ message: 'User already registered for this event' })
+      const existingRegistration = await prisma.teamMember.findFirst({
+        where: {
+          pidId: targetPid.id,
+          Team: {
+            eventId: team.eventId
+          }
+        }
+      })
+      if (existingRegistration) return res.status(400).json({ message: 'User already registered for this event' })
     }
-   
+
 
     // College check logic from source Check
     if (team.TeamMembers.length > 0) {
-        const firstMember = team.TeamMembers[0]
-        if (firstMember.PID?.User.collegeId !== targetPid.User.collegeId) {
-             // You might need to add specific event exceptions here if needed
-             // return res.status(400).json({ message: 'Team members must belong to the same college' })
-        }
+      const firstMember = team.TeamMembers[0]
+      if (firstMember.PID?.User.collegeId !== targetPid.User.collegeId) {
+        // You might need to add specific event exceptions here if needed
+        // return res.status(400).json({ message: 'Team members must belong to the same college' })
+      }
     }
 
     await prisma.teamMember.create({
-        data: {
-            teamId,
-            pidId: targetPid.id
-        }
+      data: {
+        teamId,
+        pidId: targetPid.id
+      }
     })
 
     // If no leader, set leader
     if (!team.leaderId) {
-        await prisma.team.update({ where: { id: teamId }, data: { leaderId: targetPid.id } })
+      await prisma.team.update({ where: { id: teamId }, data: { leaderId: targetPid.id } })
     }
 
     return res.status(201).json({ message: 'Member added' })
@@ -360,21 +360,21 @@ export async function removeTeamMember(req: AuthenticatedRequest, res: Response,
 
     const isOrganiser = await ensureOrganiserForEvent(userId, team.eventId)
     if (!isOrganiser) {
-        const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-        const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-        if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     const targetPid = await prisma.pID.findUnique({ where: { userId: targetUserId } })
-    if(!targetPid) return res.status(404).json({ message: 'PID not found for user' })
+    if (!targetPid) return res.status(404).json({ message: 'PID not found for user' })
 
     await prisma.teamMember.delete({
-        where: {
-            pidId_teamId: {
-                pidId: targetPid.id,
-                teamId
-            }
+      where: {
+        pidId_teamId: {
+          pidId: targetPid.id,
+          teamId
         }
+      }
     })
 
     return res.status(200).json({ message: 'Member removed' })
@@ -384,37 +384,37 @@ export async function removeTeamMember(req: AuthenticatedRequest, res: Response,
 }
 
 export async function searchUsers(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-      const userId = ensureAuthUser(req, res)
-      if (!userId) return
-  
-      // Ensure user is organiser (middleware does this generally, but we might want to check for any event organiser role)
-      // For simplicity, we assume requireOrganiser middleware is sufficient.
-  
-      const query = (req.query.q as string | undefined)?.trim()
-      if (!query || query.length < 2) {
-        return res.status(200).json({ users: [] })
-      }
-  
-      const users = await prisma.user.findMany({
-        where: {
-          OR: [
-            { email: { contains: query, mode: 'insensitive' } },
-            { name: { contains: query, mode: 'insensitive' } },
-            // Add ID search if query is numeric
-             ...(Number.isFinite(Number(query)) ? [{ id: Number(query) }] : [])
-          ],
-        },
-        take: 10,
-        select: { id: true, name: true, email: true, phoneNumber: true, College: { select: { name: true } } },
-        orderBy: { name: 'asc' },
-      })
-  
-      return res.status(200).json({ users })
-    } catch (error) {
-      return next(error)
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
+
+    // Ensure user is organiser (middleware does this generally, but we might want to check for any event organiser role)
+    // For simplicity, we assume requireOrganiser middleware is sufficient.
+
+    const query = (req.query.q as string | undefined)?.trim()
+    if (!query || query.length < 2) {
+      return res.status(200).json({ users: [] })
     }
+
+    const users = await prisma.user.findMany({
+      where: {
+        OR: [
+          { email: { contains: query, mode: 'insensitive' } },
+          { name: { contains: query, mode: 'insensitive' } },
+          // Add ID search if query is numeric
+          ...(Number.isFinite(Number(query)) ? [{ id: Number(query) }] : [])
+        ],
+      },
+      take: 10,
+      select: { id: true, name: true, email: true, phoneNumber: true, College: { select: { name: true } } },
+      orderBy: { name: 'asc' },
+    })
+
+    return res.status(200).json({ users })
+  } catch (error) {
+    return next(error)
   }
+}
 
 export async function markAttendance(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
@@ -431,14 +431,14 @@ export async function markAttendance(req: AuthenticatedRequest, res: Response, n
 
     const isOrganiser = await ensureOrganiserForEvent(userId, team.eventId)
     if (!isOrganiser) {
-        const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-        const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-        if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     await prisma.team.update({
-        where: { id: teamId },
-        data: { attended }
+      where: { id: teamId },
+      data: { attended }
     })
 
     void logWebEvent({
@@ -453,215 +453,215 @@ export async function markAttendance(req: AuthenticatedRequest, res: Response, n
 }
 
 export async function createRound(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        if (!Number.isFinite(eventId)) return res.status(400).json({ message: 'Invalid event id' })
+    const eventId = Number(req.params.eventId)
+    if (!Number.isFinite(eventId)) return res.status(400).json({ message: 'Invalid event id' })
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        // Determine next round number
-        const lastRound = await prisma.round.findFirst({
-            where: { eventId },
-            orderBy: { roundNo: 'desc' }
-        })
-        const nextRoundNo = (lastRound?.roundNo || 0) + 1
-
-        const round = await prisma.round.create({
-            data: {
-                eventId,
-                roundNo: nextRoundNo,
-                date: new Date() // Default to now, expecting update later
-            }
-        })
-
-        void logWebEvent({
-            message: `Organiser created round ${round.roundNo} for event ${eventId}`,
-            userId
-        })
-
-        return res.status(201).json({ round })
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    // Determine next round number
+    const lastRound = await prisma.round.findFirst({
+      where: { eventId },
+      orderBy: { roundNo: 'desc' }
+    })
+    const nextRoundNo = (lastRound?.roundNo || 0) + 1
+
+    const round = await prisma.round.create({
+      data: {
+        eventId,
+        roundNo: nextRoundNo,
+        date: new Date() // Default to now, expecting update later
+      }
+    })
+
+    void logWebEvent({
+      message: `Organiser created round ${round.roundNo} for event ${eventId}`,
+      userId
+    })
+
+    return res.status(201).json({ round })
+  } catch (error) {
+    return next(error)
+  }
 }
 
 export async function deleteRound(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        const roundNo = Number(req.params.roundNo)
+    const eventId = Number(req.params.eventId)
+    const roundNo = Number(req.params.roundNo)
 
-        if (!Number.isFinite(eventId) || !Number.isFinite(roundNo)) return res.status(400).json({ message: 'Invalid identifiers' })
+    if (!Number.isFinite(eventId) || !Number.isFinite(roundNo)) return res.status(400).json({ message: 'Invalid identifiers' })
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        await prisma.round.delete({
-            where: {
-                eventId_roundNo: {
-                    eventId,
-                    roundNo
-                }
-            }
-        })
-
-        void logWebEvent({
-            message: `Organiser deleted round ${roundNo} for event ${eventId}`,
-            userId
-        })
-
-        return res.status(200).json({ message: 'Round deleted' })
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    await prisma.round.delete({
+      where: {
+        eventId_roundNo: {
+          eventId,
+          roundNo
+        }
+      }
+    })
+
+    void logWebEvent({
+      message: `Organiser deleted round ${roundNo} for event ${eventId}`,
+      userId
+    })
+
+    return res.status(200).json({ message: 'Round deleted' })
+  } catch (error) {
+    return next(error)
+  }
 }
 
 export async function addJudge(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        const roundNo = Number(req.params.roundNo)
-        const { userId: judgeUserId } = req.body
+    const eventId = Number(req.params.eventId)
+    const roundNo = Number(req.params.roundNo)
+    const { userId: judgeUserId } = req.body
 
-        if (!Number.isFinite(eventId) || !Number.isFinite(roundNo) || !judgeUserId) return res.status(400).json({ message: 'Invalid input' })
+    if (!Number.isFinite(eventId) || !Number.isFinite(roundNo) || !judgeUserId) return res.status(400).json({ message: 'Invalid input' })
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        // Ensure user exists
-        const judgeUser = await prisma.user.findUnique({ where: { id: judgeUserId } })
-        if (!judgeUser) return res.status(404).json({ message: 'User not found' })
-
-        // Check if already judge
-        const existingJudge = await prisma.judge.findUnique({
-            where: {
-                userId_eventId_roundNo: {
-                    userId: judgeUserId,
-                    eventId,
-                    roundNo
-                }
-            }
-        })
-        if (existingJudge) return res.status(400).json({ message: 'User is already a judge for this round' })
-
-        await prisma.judge.create({
-            data: {
-                eventId,
-                roundNo,
-                userId: judgeUserId
-            }
-        })
-
-        return res.status(201).json({ message: 'Judge added' })
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    // Ensure user exists
+    const judgeUser = await prisma.user.findUnique({ where: { id: judgeUserId } })
+    if (!judgeUser) return res.status(404).json({ message: 'User not found' })
+
+    // Check if already judge
+    const existingJudge = await prisma.judge.findUnique({
+      where: {
+        userId_eventId_roundNo: {
+          userId: judgeUserId,
+          eventId,
+          roundNo
+        }
+      }
+    })
+    if (existingJudge) return res.status(400).json({ message: 'User is already a judge for this round' })
+
+    await prisma.judge.create({
+      data: {
+        eventId,
+        roundNo,
+        userId: judgeUserId
+      }
+    })
+
+    return res.status(201).json({ message: 'Judge added' })
+  } catch (error) {
+    return next(error)
+  }
 }
 
 export async function removeJudge(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        const roundNo = Number(req.params.roundNo)
-        const judgeUserId = Number(req.params.judgeUserId)
+    const eventId = Number(req.params.eventId)
+    const roundNo = Number(req.params.roundNo)
+    const judgeUserId = Number(req.params.judgeUserId)
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        await prisma.judge.delete({
-            where: {
-                userId_eventId_roundNo: {
-                    userId: judgeUserId,
-                    eventId,
-                    roundNo
-                }
-            }
-        })
-        return res.status(200).json({ message: 'Judge removed' })
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    await prisma.judge.delete({
+      where: {
+        userId_eventId_roundNo: {
+          userId: judgeUserId,
+          eventId,
+          roundNo
+        }
+      }
+    })
+    return res.status(200).json({ message: 'Judge removed' })
+  } catch (error) {
+    return next(error)
+  }
 }
 
 export async function addCriteria(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        const roundNo = Number(req.params.roundNo)
-        const { name, scoreOutOf } = req.body
+    const eventId = Number(req.params.eventId)
+    const roundNo = Number(req.params.roundNo)
+    const { name, scoreOutOf } = req.body
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        const criteria = await prisma.criteria.create({
-            data: {
-                eventId,
-                roundNo,
-                name,
-                scoreOutOf: Number(scoreOutOf) || 10
-            }
-        })
-
-        return res.status(201).json({ criteria })
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    const criteria = await prisma.criteria.create({
+      data: {
+        eventId,
+        roundNo,
+        name,
+        scoreOutOf: Number(scoreOutOf) || 10
+      }
+    })
+
+    return res.status(201).json({ criteria })
+  } catch (error) {
+    return next(error)
+  }
 }
 
 export async function deleteCriteria(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        const criteriaId = Number(req.params.criteriaId)
+    const eventId = Number(req.params.eventId)
+    const criteriaId = Number(req.params.criteriaId)
 
-        if (!Number.isFinite(eventId) || !Number.isFinite(criteriaId)) return res.status(400).json({ message: 'Invalid identifiers' })
+    if (!Number.isFinite(eventId) || !Number.isFinite(criteriaId)) return res.status(400).json({ message: 'Invalid identifiers' })
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        await prisma.criteria.delete({ where: { id: criteriaId } })
-        return res.status(200).json({ message: 'Criteria deleted' })
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur: { role: string }) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    await prisma.criteria.delete({ where: { id: criteriaId } })
+    return res.status(200).json({ message: 'Criteria deleted' })
+  } catch (error) {
+    return next(error)
+  }
 }
 // ... existing code ...
 
@@ -681,10 +681,10 @@ export async function createQuiz(req: AuthenticatedRequest, res: Response, next:
 
     const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
     if (!isOrganiser) {
-       // Allow Admins?
-       const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-       const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
-       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      // Allow Admins?
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     const quiz = await prisma.quiz.create({
@@ -701,14 +701,14 @@ export async function createQuiz(req: AuthenticatedRequest, res: Response, next:
     })
 
     try {
-        getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
-            eventId,
-            roundId,
-            quizId: quiz.id
-        })
+      getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
+        eventId,
+        roundId,
+        quizId: quiz.id
+      })
     } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('Socket notification failed', error)
+      // eslint-disable-next-line no-console
+      console.error('Socket notification failed', error)
     }
 
     return res.status(201).json({ quiz })
@@ -732,9 +732,9 @@ export async function getQuiz(req: AuthenticatedRequest, res: Response, next: Ne
     // Auth check
     const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
     if (!isOrganiser) {
-         const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-       const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
-       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     const quiz = await prisma.quiz.findUnique({
@@ -782,11 +782,11 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
     const { name, description, startTime, endTime, password, overridePassword, questions } = req.body as UpdateQuizInput
     console.log('UpdateQuiz Payload:', { quizId, startTime, endTime })
 
-     const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
     if (!isOrganiser) {
-          const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-       const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
-       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     // Transaction to handle nested updates safely
@@ -837,18 +837,18 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
           })
 
           // Handle Options for this question
-           // Delete old options
-           await tx.options.deleteMany({ where: { questionId: q.id } })
-           // Create new options
-           if(q.options.length > 0) {
-             await tx.options.createMany({
-               data: q.options.map(opt => ({
-                 value: opt.value,
-                 isAnswer: opt.isAnswer,
-                 questionId: q.id!
-               }))
-             })
-           }
+          // Delete old options
+          await tx.options.deleteMany({ where: { questionId: q.id } })
+          // Create new options
+          if (q.options.length > 0) {
+            await tx.options.createMany({
+              data: q.options.map(opt => ({
+                value: opt.value,
+                isAnswer: opt.isAnswer,
+                questionId: q.id!
+              }))
+            })
+          }
 
         } else {
           // Create new question
@@ -874,13 +874,13 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
     })
 
     try {
-        getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
-            eventId,
-            quizId
-        })
+      getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
+        eventId,
+        quizId
+      })
     } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('Socket notification failed', error)
+      // eslint-disable-next-line no-console
+      console.error('Socket notification failed', error)
     }
 
     return res.status(200).json({ quiz: updatedQuiz })
@@ -891,210 +891,210 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
 
 export async function deleteQuiz(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
-     const userId = ensureAuthUser(req, res)
+    const userId = ensureAuthUser(req, res)
     if (!userId) return
 
     const eventId = Number(req.params.eventId)
     const quizId = req.params.quizId
-    
+
     // Auth check
     const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
     if (!isOrganiser) {
-          const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-       const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
-       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
     await prisma.quiz.delete({
-        where: { id: quizId }
+      where: { id: quizId }
     })
-    
+
     try {
-        getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
-            eventId,
-            quizId
-        })
+      getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
+        eventId,
+        quizId
+      })
     } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('Socket notification failed', error)
+      // eslint-disable-next-line no-console
+      console.error('Socket notification failed', error)
     }
 
     return res.status(200).json({ message: 'Quiz deleted' })
-  } catch(error) {
+  } catch (error) {
     return next(error)
   }
 }
 
 export async function getQuizLeaderboard(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        const roundId = Number(req.params.roundId)
-        if (!Number.isFinite(eventId) || !Number.isFinite(roundId)) return res.status(400).json({ message: 'Invalid ID' })
+    const eventId = Number(req.params.eventId)
+    const roundId = Number(req.params.roundId)
+    if (!Number.isFinite(eventId) || !Number.isFinite(roundId)) return res.status(400).json({ message: 'Invalid ID' })
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        const quiz = await prisma.quiz.findUnique({
-             where: { eventId_roundId: { eventId, roundId } },
-             include: {
-                 QuizScores: {
-                     include: {
-                         Team: true
-                     },
-                     orderBy: [
-                         { score: 'desc' },
-                         { timeTaken: 'asc' }
-                     ]
-                 }
-             }
-        })
-
-        if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
-
-        return res.json({ leaderboard: quiz.QuizScores })
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    const quiz = await prisma.quiz.findUnique({
+      where: { eventId_roundId: { eventId, roundId } },
+      include: {
+        QuizScores: {
+          include: {
+            Team: true
+          },
+          orderBy: [
+            { score: 'desc' },
+            { timeTaken: 'asc' }
+          ]
+        }
+      }
+    })
+
+    if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
+
+    return res.json({ leaderboard: quiz.QuizScores })
+  } catch (error) {
+    return next(error)
+  }
 }
 
 export async function promoteParticipants(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        const roundId = Number(req.params.roundId) // This is current round number
-        if (!Number.isFinite(eventId) || !Number.isFinite(roundId)) return res.status(400).json({ message: 'Invalid ID' })
+    const eventId = Number(req.params.eventId)
+    const roundId = Number(req.params.roundId) // This is current round number
+    if (!Number.isFinite(eventId) || !Number.isFinite(roundId)) return res.status(400).json({ message: 'Invalid ID' })
 
-        const { teamIds } = req.body as { teamIds: number[] }
-        
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
+    const { teamIds } = req.body as { teamIds: number[] }
 
-        // Promote teams to next round logic
-        // Standard logic: Update `roundNo` of Team? Or create new round entry?
-        // In `Team` model: `roundNo` field.
-        // Logic: Update `roundNo` to current round + 1.
-        
-        const nextRoundNo = roundId + 1
-
-        // Verify next round exists?
-        // Usually we just increment.
-        
-        // Update teams
-        await prisma.team.updateMany({
-            where: {
-                id: { in: teamIds },
-                eventId,
-                roundNo: roundId // Ensure they are in current round
-            },
-            data: {
-                roundNo: nextRoundNo
-            }
-        })
-
-        return res.json({ message: 'Participants promoted' })
-
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    // Promote teams to next round logic
+    // Standard logic: Update `roundNo` of Team? Or create new round entry?
+    // In `Team` model: `roundNo` field.
+    // Logic: Update `roundNo` to current round + 1.
+
+    const nextRoundNo = roundId + 1
+
+    // Verify next round exists?
+    // Usually we just increment.
+
+    // Update teams
+    await prisma.team.updateMany({
+      where: {
+        id: { in: teamIds },
+        eventId,
+        roundNo: roundId // Ensure they are in current round
+      },
+      data: {
+        roundNo: nextRoundNo
+      }
+    })
+
+    return res.json({ message: 'Participants promoted' })
+
+  } catch (error) {
+    return next(error)
+  }
 }
 
 export async function toggleEventStart(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        if (!Number.isFinite(eventId)) return res.status(400).json({ message: 'Invalid event id' })
+    const eventId = Number(req.params.eventId)
+    if (!Number.isFinite(eventId)) return res.status(400).json({ message: 'Invalid event id' })
 
-        const { isStarted } = req.body
+    const { isStarted } = req.body
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        const event = await prisma.event.update({
-            where: { id: eventId },
-            data: { isStarted: Boolean(isStarted) }
-        })
-
-        if (isStarted) {
-             // Reset all rounds to not completed
-             await prisma.round.updateMany({
-                 where: { eventId },
-                 data: { isCompleted: false }
-             })
-        }
-
-        void logWebEvent({
-            message: `Organiser ${isStarted ? 'started' : 'stopped'} event ${eventId}`,
-            userId
-        })
-
-        return res.status(200).json({ event })
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    const event = await prisma.event.update({
+      where: { id: eventId },
+      data: { isStarted: Boolean(isStarted) }
+    })
+
+    if (isStarted) {
+      // Reset all rounds to not completed
+      await prisma.round.updateMany({
+        where: { eventId },
+        data: { isCompleted: false }
+      })
+    }
+
+    void logWebEvent({
+      message: `Organiser ${isStarted ? 'started' : 'stopped'} event ${eventId}`,
+      userId
+    })
+
+    return res.status(200).json({ event })
+  } catch (error) {
+    return next(error)
+  }
 }
 
 export async function setActiveRound(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-    try {
-        const userId = ensureAuthUser(req, res)
-        if (!userId) return
+  try {
+    const userId = ensureAuthUser(req, res)
+    if (!userId) return
 
-        const eventId = Number(req.params.eventId)
-        const roundNo = Number(req.body.roundNo) 
+    const eventId = Number(req.params.eventId)
+    const roundNo = Number(req.body.roundNo)
 
-        if (!Number.isFinite(eventId) || !Number.isFinite(roundNo)) return res.status(400).json({ message: 'Invalid identifiers' })
+    if (!Number.isFinite(eventId) || !Number.isFinite(roundNo)) return res.status(400).json({ message: 'Invalid identifiers' })
 
-        const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
-        if (!isOrganiser) {
-             const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
-             const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
-             if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
-        }
-
-        // Mark previous completed
-        await prisma.round.updateMany({
-            where: { 
-                eventId,
-                roundNo: { lt: roundNo }
-            },
-            data: { isCompleted: true }
-        })
-
-        // Mark current and future incomplete
-        await prisma.round.updateMany({
-            where: { 
-                eventId,
-                roundNo: { gte: roundNo }
-            },
-            data: { isCompleted: false }
-        })
-
-        void logWebEvent({
-            message: `Organiser set active round to ${roundNo} for event ${eventId}`,
-            userId
-        })
-
-        return res.status(200).json({ message: 'Active round updated' })
-
-    } catch (error) {
-        return next(error)
+    const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
+    if (!isOrganiser) {
+      const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
+      const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
+      if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
+
+    // Mark previous completed
+    await prisma.round.updateMany({
+      where: {
+        eventId,
+        roundNo: { lt: roundNo }
+      },
+      data: { isCompleted: true }
+    })
+
+    // Mark current and future incomplete
+    await prisma.round.updateMany({
+      where: {
+        eventId,
+        roundNo: { gte: roundNo }
+      },
+      data: { isCompleted: false }
+    })
+
+    void logWebEvent({
+      message: `Organiser set active round to ${roundNo} for event ${eventId}`,
+      userId
+    })
+
+    return res.status(200).json({ message: 'Active round updated' })
+
+  } catch (error) {
+    return next(error)
+  }
 }
