@@ -51,7 +51,7 @@ export async function updateOrganiserProfile(req: AuthenticatedRequest, res: Res
     })
 
     void logWebEvent({
-      message: `Organiser updated profile (Name: ${name}, Phone: ${phoneNumber})`,
+      message: `Organiser updated profile(Name: ${name}, Phone: ${phoneNumber})`,
       userId
     })
 
@@ -442,7 +442,7 @@ export async function markAttendance(req: AuthenticatedRequest, res: Response, n
     })
 
     void logWebEvent({
-      message: `Organiser marked attendance for team ${teamId} to ${attended}`,
+      message: `Organiser marked attendance for team ${teamId} to ${attended} `,
       userId
     })
 
@@ -572,6 +572,11 @@ export async function addJudge(req: AuthenticatedRequest, res: Response, next: N
       }
     })
 
+    void logWebEvent({
+      message: `Organiser ${userId} added judge ${judgeUserId} to event ${eventId} round ${roundNo} `,
+      userId,
+    })
+
     return res.status(201).json({ message: 'Judge added' })
   } catch (error) {
     return next(error)
@@ -603,6 +608,12 @@ export async function removeJudge(req: AuthenticatedRequest, res: Response, next
         }
       }
     })
+
+    void logWebEvent({
+      message: `Organiser ${userId} removed judge ${judgeUserId} from event ${eventId} round ${roundNo} `,
+      userId,
+    })
+
     return res.status(200).json({ message: 'Judge removed' })
   } catch (error) {
     return next(error)
@@ -634,6 +645,11 @@ export async function addCriteria(req: AuthenticatedRequest, res: Response, next
       }
     })
 
+    void logWebEvent({
+      message: `Organiser ${userId} added criteria "${criteria.name}"(${criteria.id}) to event ${eventId} round ${roundNo} `,
+      userId,
+    })
+
     return res.status(201).json({ criteria })
   } catch (error) {
     return next(error)
@@ -658,6 +674,12 @@ export async function deleteCriteria(req: AuthenticatedRequest, res: Response, n
     }
 
     await prisma.criteria.delete({ where: { id: criteriaId } })
+
+    void logWebEvent({
+      message: `Organiser ${userId} deleted criteria ${criteriaId} from event ${eventId} `,
+      userId,
+    })
+
     return res.status(200).json({ message: 'Criteria deleted' })
   } catch (error) {
     return next(error)
@@ -701,7 +723,7 @@ export async function createQuiz(req: AuthenticatedRequest, res: Response, next:
     })
 
     try {
-      getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
+      getIO().to(`event - ${eventId} `).emit('QUIZ_UPDATED', {
         eventId,
         roundId,
         quizId: quiz.id
@@ -874,7 +896,7 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
     })
 
     try {
-      getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
+      getIO().to(`event - ${eventId} `).emit('QUIZ_UPDATED', {
         eventId,
         quizId
       })
@@ -910,7 +932,7 @@ export async function deleteQuiz(req: AuthenticatedRequest, res: Response, next:
     })
 
     try {
-      getIO().to(`event-${eventId}`).emit('QUIZ_UPDATED', {
+      getIO().to(`event - ${eventId} `).emit('QUIZ_UPDATED', {
         eventId,
         quizId
       })
@@ -1042,7 +1064,7 @@ export async function toggleEventStart(req: AuthenticatedRequest, res: Response,
     }
 
     void logWebEvent({
-      message: `Organiser ${isStarted ? 'started' : 'stopped'} event ${eventId}`,
+      message: `Organiser ${isStarted ? 'started' : 'stopped'} event ${eventId} `,
       userId
     })
 

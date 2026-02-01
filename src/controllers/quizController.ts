@@ -2,6 +2,7 @@ import { NextFunction, Response } from 'express'
 import prisma from '../prisma/client'
 import { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import { getIO } from '../socket'
+import { logWebEvent } from '../services/logService'
 
 export const getQuizPublic = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -159,6 +160,11 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
             console.error('Socket notification failed', error)
         }
 
+        void logWebEvent({
+            message: `Team ${teamId} started quiz ${quizId}`,
+            userId
+        })
+
         return res.json({ success: true, attemptStartTime: newScore.attemptStartTime })
 
     } catch (error) {
@@ -199,6 +205,13 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
                 optionId
             }
         })
+
+        if (Math.random() < 0.05) { // Sample logs to avoid spamming
+            void logWebEvent({
+                message: `Team ${teamId} submitted answer for quiz ${quizId}`,
+                userId
+            })
+        }
 
         return res.json({ success: true })
 
@@ -326,6 +339,11 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
             // eslint-disable-next-line no-console
             console.error('Socket notification failed', error)
         }
+
+        void logWebEvent({
+            message: `Team ${teamId} finished quiz ${quizId} with score ${score}`,
+            userId
+        })
 
         return res.json({ success: true, score })
 

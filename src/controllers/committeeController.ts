@@ -11,6 +11,8 @@ import type {
   RemoveMemberInput,
 } from '../schemas/committeeSchemas'
 
+import { logWebEvent } from '../services/logService'
+
 const userSummarySelect = { id: true, name: true, email: true, phoneNumber: true, profileImage: true }
 
 async function getUserRoles(userId: number) {
@@ -229,6 +231,11 @@ export async function applyToCommittee(req: AuthenticatedRequest, res: Response,
       include: { Committee: true },
     })
 
+    void logWebEvent({
+      message: `User ${userId} applied to committee ${membership.Committee.name}`,
+      userId
+    })
+
     return res.status(201).json({
       membership: {
         id: membership.id,
@@ -275,6 +282,11 @@ export async function assignCommitteeHead(req: AuthenticatedRequest, res: Respon
         headUser: { select: userSummarySelect },
         coHeadUser: { select: userSummarySelect },
       },
+    })
+
+    void logWebEvent({
+      message: `Assigned head ${user.id} to committee ${updated.name}`,
+      userId: req.user?.id ?? null
     })
 
     return res.status(200).json({
@@ -347,6 +359,11 @@ export async function assignCommitteeCoHead(req: AuthenticatedRequest, res: Resp
       },
     })
 
+    void logWebEvent({
+      message: `Assigned co-head ${user.id} to committee ${committee.name}`,
+      userId: req.user?.id ?? null
+    })
+
     return res.status(200).json({
       committee: {
         id: updated?.id ?? committee.id,
@@ -386,6 +403,11 @@ export async function approveCommitteeMember(req: AuthenticatedRequest, res: Res
       where: { id: membership.id },
       data: { status: CommitteeMembershipStatus.APPROVED },
       include: { User: { select: userSummarySelect } },
+    })
+
+    void logWebEvent({
+      message: `Approved member ${membership.userId} for committee ${membership.Committee.name}`,
+      userId: req.user.id
     })
 
     return res.status(200).json({
@@ -466,6 +488,11 @@ export async function removeCommitteeMember(req: AuthenticatedRequest, res: Resp
     })
 
 
+    void logWebEvent({
+      message: `Removed member ${membership.userId} from committee ${membership.Committee.name}`,
+      userId: req.user.id
+    })
+
     return res.status(200).json({
       message: 'Member removed',
     })
@@ -531,25 +558,25 @@ export async function getCommitteeMembers(req: AuthenticatedRequest, res: Respon
     }))
 
     if (committee?.coHeadUser) {
-        formattedMembers.unshift({
-            userId: committee.coHeadUser.id,
-            name: committee.coHeadUser.name,
-            email: committee.coHeadUser.email,
-            phoneNumber: committee.coHeadUser.phoneNumber,
-            profileImage: committee.coHeadUser.profileImage,
-            designation: 'Co-Head',
-        })
+      formattedMembers.unshift({
+        userId: committee.coHeadUser.id,
+        name: committee.coHeadUser.name,
+        email: committee.coHeadUser.email,
+        phoneNumber: committee.coHeadUser.phoneNumber,
+        profileImage: committee.coHeadUser.profileImage,
+        designation: 'Co-Head',
+      })
     }
 
     if (committee?.headUser) {
-        formattedMembers.unshift({
-            userId: committee.headUser.id,
-            name: committee.headUser.name,
-            email: committee.headUser.email,
-            phoneNumber: committee.headUser.phoneNumber,
-            profileImage: committee.headUser.profileImage,
-            designation: 'Head',
-        })
+      formattedMembers.unshift({
+        userId: committee.headUser.id,
+        name: committee.headUser.name,
+        email: committee.headUser.email,
+        phoneNumber: committee.headUser.phoneNumber,
+        profileImage: committee.headUser.profileImage,
+        designation: 'Head',
+      })
     }
 
     return res.status(200).json({ members: formattedMembers })
@@ -641,6 +668,11 @@ export async function updateCommitteeAccess(req: AuthenticatedRequest, res: Resp
         canCreateDocuments,
         canCreateClassified,
       },
+    })
+
+    void logWebEvent({
+      message: `Updated access for committee ${updated.name}`,
+      userId: req.user.id
     })
 
     return res.status(200).json({

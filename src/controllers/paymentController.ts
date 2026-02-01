@@ -11,6 +11,7 @@ import { setPaymentStep, getPaymentStep, clearPaymentStep } from '../utils/payme
 
 import { getIO } from '../socket'
 import { addReceiptJob } from '../utils/queue'
+import { logWebEvent } from '../services/logService'
 
 
 
@@ -271,6 +272,11 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
 
           const io = getIO()
           io.to(`user-${paymentOrder.userId}`).emit('payment_failed')
+
+          void logWebEvent({
+            message: `Payment failed for order ${orderId}`,
+            userId: paymentOrder.userId
+          })
         }
         return res.status(200).json({ status: 'ok' })
       } else {
@@ -526,6 +532,12 @@ async function processSuccessfulPayment(paymentOrder: any, paymentEntity: any, p
       'timestamp', new Date().toISOString()
     )
     console.log(`Emitted payment.success event for order ${paymentOrder.orderId}`)
+
+    void logWebEvent({
+      message: `Payment success for order ${paymentOrder.orderId}`,
+      userId: paymentOrder.userId,
+    })
+
   } catch (error) {
     console.error('Failed to emit payment.success event:', error)
   }

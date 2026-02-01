@@ -2,6 +2,7 @@ import type { NextFunction, Response } from 'express'
 import prisma from '../prisma/client'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import { getIO } from '../socket'
+import { logWebEvent } from '../services/logService'
 
 export function ensureAuthUser(req: AuthenticatedRequest, res: Response) {
     if (!req.user?.id) {
@@ -192,6 +193,11 @@ export async function submitScore(req: AuthenticatedRequest, res: Response, next
             console.error("Socket emit failed", e)
         }
 
+        void logWebEvent({
+            message: `Judge ${userId} submitted score for team ${teamId} in round ${roundNo}`,
+            userId
+        })
+
         return res.status(200).json({ message: 'Score saved' })
 
     } catch (error) {
@@ -222,6 +228,11 @@ export async function promoteTeam(req: AuthenticatedRequest, res: Response, next
             data: {
                 roundNo: selected ? roundNo + 1 : roundNo
             }
+        })
+
+        void logWebEvent({
+            message: `Judge ${userId} ${selected ? 'promoted' : 'demoted'} team ${teamId} from round ${roundNo}`,
+            userId
         })
 
         return res.status(200).json({ message: selected ? 'Team promoted' : 'Team removed from next round' })
@@ -279,6 +290,12 @@ export async function selectWinner(req: AuthenticatedRequest, res: Response, nex
         } catch (e) {
             console.error('Socket notification failed', e)
         }
+
+        void logWebEvent({
+            message: `Judge ${userId} selected winner for event ${eventId}, type ${type}`,
+            userId
+        })
+
         return res.status(201).json({ message: 'Winner selected' })
     } catch (error) {
         return next(error)
@@ -306,6 +323,11 @@ export async function deleteWinner(req: AuthenticatedRequest, res: Response, nex
         } catch (e) {
             console.error('Socket notification failed', e)
         }
+
+        void logWebEvent({
+            message: `Judge ${userId} removed winner ${winnerId}`,
+            userId
+        })
 
         return res.status(200).json({ message: 'Winner removed' })
     } catch (error) {
@@ -336,6 +358,11 @@ export async function updateRoundStatus(req: AuthenticatedRequest, res: Response
         } catch (e) {
             console.error('Socket notification failed', e)
         }
+
+        void logWebEvent({
+            message: `Judge ${userId} updated round ${roundNo} status to ${selectStatus} for event ${eventId}`,
+            userId
+        })
 
         return res.status(200).json({ message: 'Round status updated' })
     } catch (error) {

@@ -4,6 +4,7 @@ import { Gender, PaymentType, Status, CommitteeName } from '@prisma/client'
 import { z } from 'zod'
 import { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import { razorpayAccommodation } from '../services/razorpay'
+import { logWebEvent } from '../services/logService'
 
 // Get available accommodation stats
 export async function getStats(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -82,6 +83,11 @@ export async function updateVars(req: AuthenticatedRequest, res: Response, next:
         create: { key: 'GirlsAccCount', value: girlsCount }
       })
     }
+
+    void logWebEvent({
+      message: `Accommodation variables updated (Boys: ${boysCount}, Girls: ${girlsCount})`,
+      userId
+    })
 
     return res.json({ message: 'Accommodation variables updated successfully' })
   } catch (error) {
@@ -228,8 +234,12 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
         }
       })
 
-      // Return the ACCOMMODATION KEY ID
       return { booking, payment: { ...booking, key: process.env.RAZORPAY_SEC_KEY_ID, currency: order.currency, amount: order.amount, orderId: orderId } }
+    })
+
+    void logWebEvent({
+      message: `User ${userId} created accommodation booking`,
+      userId
     })
 
     return res.json(booking)

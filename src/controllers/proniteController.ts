@@ -4,6 +4,7 @@ import prisma from '../prisma/client'
 import { ProniteDay } from '@prisma/client'
 import { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import { z } from 'zod'
+import { logWebEvent } from '../services/logService'
 
 // --- Schemas ---
 
@@ -30,6 +31,10 @@ export async function createBooth(req: AuthenticatedRequest, res: Response, next
     const booth = await prisma.proniteBooth.create({
       data: { location, assignedBands },
     })
+    void logWebEvent({
+      message: `Created booth ${location}`,
+      userId: req.user?.id ?? null,
+    })
     return res.status(201).json(booth)
   } catch (error) {
     return next(error)
@@ -46,6 +51,10 @@ export async function updateBooth(req: AuthenticatedRequest, res: Response, next
     const booth = await prisma.proniteBooth.update({
       where: { id },
       data: { location, assignedBands }
+    })
+    void logWebEvent({
+      message: `Updated booth ${id}`,
+      userId: req.user?.id ?? null,
     })
     return res.json(booth)
   } catch (error) {
@@ -65,6 +74,10 @@ export async function deleteBooth(req: AuthenticatedRequest, res: Response, next
     }
 
     await prisma.proniteBooth.delete({ where: { id } })
+    void logWebEvent({
+      message: `Deleted booth ${id}`,
+      userId: req.user?.id ?? null,
+    })
     return res.json({ message: 'Booth deleted successfully' })
   } catch (error) {
     return next(error)
@@ -110,6 +123,11 @@ export async function assignVolunteer(req: AuthenticatedRequest, res: Response, 
       }
     })
 
+    void logWebEvent({
+      message: `Assigned volunteer ${userId} to booth ${boothId} for ${proniteDay}`,
+      userId: req.user?.id ?? null,
+    })
+
     return res.status(201).json({ volunteer })
   } catch (error) {
     return next(error)
@@ -137,6 +155,10 @@ export async function unassignVolunteer(req: AuthenticatedRequest, res: Response
     if (isNaN(id)) return res.status(400).json({ message: 'Invalid ID' })
 
     await prisma.proniteVolunteer.delete({ where: { id } })
+    void logWebEvent({
+      message: `Unassigned volunteer ${id}`,
+      userId: req.user?.id ?? null,
+    })
     return res.json({ message: 'Volunteer unassigned' })
   } catch (error) {
     return next(error)
@@ -241,6 +263,11 @@ export async function scanUser(req: AuthenticatedRequest, res: Response, next: N
         userId: pidEntry.userId,
         scannedByVolunteerId: volunteer.id
       }
+    })
+
+    void logWebEvent({
+      message: `Volunteer ${volunteerUserId} scanned user ${pid}`,
+      userId: volunteerUserId,
     })
 
     return res.status(201).json({ message: 'Scan successful', pass })
