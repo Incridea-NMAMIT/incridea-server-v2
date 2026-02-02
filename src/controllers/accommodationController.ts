@@ -3,7 +3,7 @@ import prisma from '../prisma/client'
 import { Gender, PaymentType, Status, CommitteeName } from '@prisma/client'
 import { z } from 'zod'
 import { AuthenticatedRequest } from '../middlewares/authMiddleware'
-import { razorpayAccommodation } from '../services/razorpay'
+import { razorpay } from '../services/razorpay'
 import { logWebEvent } from '../services/logService'
 
 // Get available accommodation stats
@@ -193,7 +193,7 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
       const amountInPaisa = amountInRupees * 100
 
       // Create Razorpay Order with Accommodation credentials
-      const order = await razorpayAccommodation.orders.create({
+      const order = await razorpay.orders.create({
         amount: amountInPaisa,
         currency: 'INR',
         receipt: `acc_ind_${userId}_${Date.now()}`,
@@ -234,7 +234,7 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
         }
       })
 
-      return { booking, payment: { ...booking, key: process.env.RAZORPAY_SEC_KEY_ID, currency: order.currency, amount: order.amount, orderId: orderId } }
+      return { booking, payment: { ...booking, key: process.env.RAZORPAY_KEY_ID, currency: order.currency, amount: order.amount, orderId: orderId } }
     })
 
     void logWebEvent({

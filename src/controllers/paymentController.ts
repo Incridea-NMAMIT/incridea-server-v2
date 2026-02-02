@@ -2,7 +2,7 @@
 import type { Request, Response } from 'express'
 import crypto from 'crypto'
 import prisma from '../prisma/client'
-import { RAZORPAY_WEBHOOK_SECRET, RAZORPAY_ACC_WEBHOOK_SECRET, razorpay, razorpayAccommodation } from '../services/razorpay'
+import { RAZORPAY_WEBHOOK_SECRET, razorpay } from '../services/razorpay'
 import { Status, PaymentType, PaymentPurpose, PaymentStatus, PaymentMethod } from '@prisma/client'
 import { listVariables } from '../services/adminService'
 import { generatePID } from '../services/pidService'
@@ -120,11 +120,11 @@ export async function initiatePayment(req: Request, res: Response) {
     console.log('Creating Razorpay Order with options:', JSON.stringify(orderOptions, null, 2))
 
     // Use Secondary Key for Merch
-    let rzp = razorpay;
-    if (registrationId === 'merch-tshirt') {
-      rzp = razorpayAccommodation;
-      console.log('Using Secondary Razorpay Instance (Accommodation/Merch)');
-    }
+    const rzp = razorpay;
+    // if (registrationId === 'merch-tshirt') {
+    //   rzp = razorpayAccommodation;
+    //   console.log('Using Secondary Razorpay Instance (Accommodation/Merch)');
+    // }
 
     const order = await rzp.orders.create(orderOptions)
 
@@ -169,7 +169,7 @@ export async function initiatePayment(req: Request, res: Response) {
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
-      key: registrationId === 'merch-tshirt' ? process.env.RAZORPAY_SEC_KEY_ID : process.env.RAZORPAY_KEY_ID,
+      key: process.env.RAZORPAY_KEY_ID,
       name: 'Incridea', // Or fetch from config
       description: 'Fest Registration',
       prefill: {
@@ -206,10 +206,10 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
     }
 
     // Try Accommodation Secret if not processed
-    if (!isVerified && RAZORPAY_ACC_WEBHOOK_SECRET) {
-      const expected = crypto.createHmac('sha256', RAZORPAY_ACC_WEBHOOK_SECRET).update(body).digest('hex')
-      if (expected === signature) isVerified = true
-    }
+    // if (!isVerified && RAZORPAY_ACC_WEBHOOK_SECRET) {
+    //   const expected = crypto.createHmac('sha256', RAZORPAY_ACC_WEBHOOK_SECRET).update(body).digest('hex')
+    //   if (expected === signature) isVerified = true
+    // }
 
     if (!isVerified) {
       console.error('handleRazorpayWebhook: Invalid Razorpay signature (Tried both keys)')
@@ -311,13 +311,13 @@ export async function verifyPayment(req: Request, res: Response) {
     }
 
     // Select Secret
-    let secret = process.env.RAZORPAY_KEY_SECRET
-    if (paymentOrder.type === PaymentType.ACC_REGISTRATION || paymentOrder.type === PaymentType.MERCH_PAYMENT) {
-      secret = process.env.RAZORPAY_SEC_KEY_SECRET
-    }
+    const secret = process.env.RAZORPAY_KEY_SECRET
+    // if (paymentOrder.type === PaymentType.ACC_REGISTRATION || paymentOrder.type === PaymentType.MERCH_PAYMENT) {
+    //   secret = process.env.RAZORPAY_SEC_KEY_SECRET
+    // }
 
     if (!secret) {
-      console.error('RAZORPAY_KEY_SECRET or RAZORPAY_SEC_KEY_SECRET is not set')
+      console.error('RAZORPAY_KEY_SECRET is not set')
       return res.status(500).json({ message: 'Configuration error' })
     }
 
@@ -354,8 +354,8 @@ export async function verifyPayment(req: Request, res: Response) {
           } catch (e) { console.error("Retry generation failed:", e); }
         } else {
           // Fetch from correct razorpay instance
-          let rzp = razorpay;
-          if (paymentOrder.type === PaymentType.ACC_REGISTRATION || paymentOrder.type === PaymentType.MERCH_PAYMENT) rzp = razorpayAccommodation;
+          const rzp = razorpay;
+          // if (paymentOrder.type === PaymentType.ACC_REGISTRATION || paymentOrder.type === PaymentType.MERCH_PAYMENT) rzp = razorpayAccommodation;
 
           const payment = await rzp.payments.fetch(razorpay_payment_id)
           if (payment) {
@@ -374,8 +374,8 @@ export async function verifyPayment(req: Request, res: Response) {
     }
 
     // 3. If Pending/Failed locally, fetch from Razorpay to confirm
-    let rzp = razorpay;
-    if (paymentOrder.type === PaymentType.ACC_REGISTRATION || paymentOrder.type === PaymentType.MERCH_PAYMENT) rzp = razorpayAccommodation;
+    const rzp = razorpay;
+    // if (paymentOrder.type === PaymentType.ACC_REGISTRATION || paymentOrder.type === PaymentType.MERCH_PAYMENT) rzp = razorpayAccommodation;
 
     const payment = await rzp.payments.fetch(razorpay_payment_id)
     console.log(`verifyPayment: Fetched payment ${razorpay_payment_id} from Razorpay. Status: ${payment.status}`);
