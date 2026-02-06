@@ -93,6 +93,9 @@ app.use('/api/pronite', proniteRoutes)
 import venueRoutes from './routes/venueRoutes'
 app.use('/api/venue', venueRoutes)
 
+import emcRoutes from './routes/emcRoutes'
+app.use('/api/emc', emcRoutes)
+
 app.use('/api/internal', internalRoutes)
 
 
