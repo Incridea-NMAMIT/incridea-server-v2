@@ -2,7 +2,7 @@ import type { NextFunction, Response } from 'express'
 import prisma from '../prisma/client'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
 
-export async function getVenues(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function getVenues(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
         const venues = await prisma.venue.findMany({
             orderBy: { name: 'asc' },
