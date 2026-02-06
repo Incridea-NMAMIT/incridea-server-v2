@@ -5,6 +5,12 @@ export const createBranchEventSchema = z
     name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long'),
     description: z.string().trim().max(5000, 'Description is too long').optional(),
     venue: z.string().trim().max(255, 'Venue is too long').optional(),
+    schedules: z.array(z.object({
+      venue: z.string().trim().max(255).optional(),
+      day: z.enum(['Day1', 'Day2', 'Day3', 'Day4']),
+      startTime: z.string().datetime().optional(),
+      endTime: z.string().datetime().optional(),
+    })).optional(),
     minTeamSize: z.number().int().positive().optional(),
     maxTeamSize: z.number().int().positive().optional(),
     maxTeams: z.number().int().positive().nullable().optional(),
@@ -35,6 +41,13 @@ export const updateBranchEventSchema = z
     name: z.string().trim().min(1, 'Name is required').max(120, 'Name is too long').optional(),
     description: z.string().trim().max(5000, 'Description is too long').optional(),
     venue: z.string().trim().max(255, 'Venue is too long').optional(),
+    schedules: z.array(z.object({
+      id: z.number().optional(), // For updating existing schedules
+      venue: z.string().trim().max(255).optional(),
+      day: z.enum(['Day1', 'Day2', 'Day3', 'Day4']),
+      startTime: z.string().datetime().optional(),
+      endTime: z.string().datetime().optional(),
+    })).optional(),
     minTeamSize: z.number().int().positive().optional(),
     maxTeamSize: z.number().int().positive().optional(),
     maxTeams: z.number().int().positive().nullable().optional(),

@@ -17,17 +17,17 @@ const BRANCH_NAMES = [
 ]
 
 async function ensureCollege() {
-    console.log('Ensuring College exists...')
-    const existingCollege = await prisma.college.findFirst()
-    
-    if (!existingCollege) {
-      await prisma.college.create({
-        data: {
-            name: 'NMAM Institute of Technology',
-            type: CollegeType.ENGINEERING
-        }
-      })
-    }
+  console.log('Ensuring College exists...')
+  const existingCollege = await prisma.college.findFirst()
+
+  if (!existingCollege) {
+    await prisma.college.create({
+      data: {
+        name: 'NMAM Institute of Technology',
+        type: CollegeType.ENGINEERING
+      }
+    })
+  }
 }
 
 async function ensureBranches() {
@@ -42,15 +42,15 @@ async function ensureBranches() {
 
 async function ensureTechUsers() {
   console.log('Creating/Updating 50 Tech Users...')
-  
+
   const college = await prisma.college.findFirst()
   if (!college) throw new Error("College not found")
-  
+
   for (let i = 1; i <= 50; i++) {
     const email = `tech${i}@tech.in`
     const password = `tech${i}`
     const hashedPassword = await bcrypt.hash(password, 10)
-    
+
     await prisma.user.upsert({
       where: { email },
       update: {
@@ -62,7 +62,7 @@ async function ensureTechUsers() {
         email,
         password: hashedPassword,
         phoneNumber: `9${String(i).padStart(9, '0')}`,
-        collegeId: college.id, 
+        collegeId: college.id,
         isVerified: true,
       },
     })
@@ -88,30 +88,30 @@ async function ensureDummyEvents() {
     const existingEvent = await prisma.event.findFirst({ where: { name: eventName } })
 
     const eventData = {
-        name: eventName,
-        description: `This is a description for ${eventName}.`,
-        eventType: EVENT_TYPES[i % EVENT_TYPES.length],
-        category: EVENT_CATEGORIES[i % EVENT_CATEGORIES.length],
-        tier: EventTier.GOLD,
-        image: IMAGE_URL,
-        branchId: branch.id,
-        isBranch: true,
-        published: true,
-        venue: `Room ${100 + i}`,
-        minTeamSize: 1,
-        maxTeamSize: 4,
-        maxTeams: 50,
+      name: eventName,
+      description: `This is a description for ${eventName}.`,
+      eventType: EVENT_TYPES[i % EVENT_TYPES.length],
+      category: EVENT_CATEGORIES[i % EVENT_CATEGORIES.length],
+      tier: EventTier.GOLD,
+      image: IMAGE_URL,
+      branchId: branch.id,
+      isBranch: true,
+      published: true,
+
+      minTeamSize: 1,
+      maxTeamSize: 4,
+      maxTeams: 50,
     }
 
     if (existingEvent) {
-        await prisma.event.update({
-            where: { id: existingEvent.id },
-            data: eventData
-        })
+      await prisma.event.update({
+        where: { id: existingEvent.id },
+        data: eventData
+      })
     } else {
-        await prisma.event.create({
-            data: eventData
-        })
+      await prisma.event.create({
+        data: eventData
+      })
     }
   }
 }

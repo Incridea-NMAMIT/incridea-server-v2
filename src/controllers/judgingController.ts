@@ -65,8 +65,6 @@ export async function getTeamsByRound(req: AuthenticatedRequest, res: Response, 
             return res.status(400).json({ message: 'Invalid identifiers' })
         }
 
-        // specific round check if needed, but the query below implicitly checks round association if we filter by round
-
         // Check if user is judge for this round
         const isJudge = await prisma.judge.findUnique({
             where: {
@@ -80,30 +78,42 @@ export async function getTeamsByRound(req: AuthenticatedRequest, res: Response, 
         if (!isJudge) return res.status(403).json({ message: 'You are not a judge for this round' })
 
 
-        // Get teams eligible for this round
-        // A team is eligible if they are promoted to this round.
-        // Assuming 'roundNo' in Team model indicates the CURRENT active round of the team.
-        // So if Team.roundNo == roundNo, they are in this round.
-
-        const teams = await prisma.team.findMany({
+        // Get participants eligible for this round (EventParticipant.roundNo == roundNo)
+        const participants = await prisma.eventParticipant.findMany({
             where: {
                 eventId,
                 roundNo,
                 confirmed: true
             },
             include: {
-                TeamMembers: {
+                Team: {
                     include: {
-                        PID: {
+                        TeamMembers: {
                             include: {
-                                User: {
-                                    select: {
-                                        name: true,
-                                        email: true,
-                                        phoneNumber: true,
-                                        id: true
+                                PID: {
+                                    include: {
+                                        User: {
+                                            select: {
+                                                name: true,
+                                                email: true,
+                                                phoneNumber: true,
+                                                id: true
+                                            }
+                                        }
                                     }
                                 }
+                            }
+                        }
+                    }
+                },
+                PID: {
+                    include: {
+                        User: {
+                            select: {
+                                name: true,
+                                email: true,
+                                phoneNumber: true,
+                                id: true
                             }
                         }
                     }
@@ -113,30 +123,60 @@ export async function getTeamsByRound(req: AuthenticatedRequest, res: Response, 
                         judgeId: userId
                     }
                 },
-                Winner: {
+                Winners: {
                     select: {
                         id: true,
                         type: true,
                         eventId: true,
-                        teamId: true
+                        eventParticipantId: true
                     }
                 }
             }
         })
 
-        const teamsWithWinners = teams.map(t => ({
-            ...t,
-            Winners: t.Winner ? [t.Winner] : []
-        }))
+        // Serialize to a consistent structure (similar to old 'teams' but handling singular PIDs)
+        const participantsWithWinners = participants.map(p => {
+            // If Team Event
+            if (p.Team) {
+                return {
+                    ...p.Team, // existing team props
+                    eventParticipantId: p.id,
+                    roundNo: p.roundNo,
+                    confirmed: p.confirmed,
+                    attended: p.attended,
+                    Winners: p.Winners ? [p.Winners] : [],
+                    Score: p.Score
+                }
+            }
+            // If Solo Event
+            if (p.PID) {
+                return {
+                    id: p.id, // Use EP ID as ID
+                    name: p.PID.User.name,
+                    eventParticipantId: p.id,
+                    eventId: p.eventId,
+                    roundNo: p.roundNo,
+                    confirmed: p.confirmed,
+                    attended: p.attended,
+                    leaderId: p.PID.id,
+                    TeamMembers: [{
+                        id: 0,
+                        pidId: p.PID.id,
+                        PID: p.PID
+                    }],
+                    Winners: p.Winners ? [p.Winners] : [],
+                    Score: p.Score,
+                    isSolo: true
+                }
+            }
+            return null
+        }).filter(Boolean)
 
-        return res.status(200).json({ teams: teamsWithWinners })
+        return res.status(200).json({ teams: participantsWithWinners })
     } catch (error) {
         return next(error)
     }
 }
-
-// Add more judging actions here (submit score etc)
-// For now, based on V1 judge tab, likely we need getting teams and submitting scores.
 
 export async function submitScore(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
@@ -145,11 +185,9 @@ export async function submitScore(req: AuthenticatedRequest, res: Response, next
 
         const eventId = Number(req.params.eventId)
         const roundNo = Number(req.params.roundNo)
-        const teamId = Number(req.body.teamId)
+        const teamId = Number(req.body.teamId) // This is potentially a Team ID OR EventParticipant ID
         const criteriaId = Number(req.body.criteriaId)
         const scoreVal = String(req.body.score)
-
-        // Validation...
 
         const isJudge = await prisma.judge.findUnique({
             where: { userId_eventId_roundNo: { userId, eventId, roundNo } }
@@ -166,10 +204,24 @@ export async function submitScore(req: AuthenticatedRequest, res: Response, next
         const round = await prisma.round.findUnique({ where: { eventId_roundNo: { eventId, roundNo } } })
         if (round?.isCompleted) return res.status(400).json({ message: 'Round is completed' })
 
+        // Find EventParticipant
+        // If the frontend passed `teamId` as `EventParticipant.id` (mapped in getTeamsByRound), use it directly.
+        // If passed actual Team ID (legacy), resolve it.
+        // Best approach: Try to find EventParticipant by ID = teamId.
+        // If not found, look for EventParticipant where teamId = teamId.
+
+        let participant = await prisma.eventParticipant.findUnique({ where: { id: teamId } })
+
+        if (!participant || participant.eventId !== eventId) {
+            participant = await prisma.eventParticipant.findFirst({ where: { teamId, eventId } })
+        }
+
+        if (!participant) return res.status(404).json({ message: 'Participant not found' })
+
         await prisma.scores.upsert({
             where: {
-                teamId_criteriaId_judgeId: {
-                    teamId,
+                eventParticipantId_criteriaId_judgeId: {
+                    eventParticipantId: participant.id,
                     criteriaId,
                     judgeId: userId
                 }
@@ -178,7 +230,7 @@ export async function submitScore(req: AuthenticatedRequest, res: Response, next
                 score: scoreVal
             },
             create: {
-                teamId,
+                eventParticipantId: participant.id,
                 criteriaId,
                 judgeId: userId,
                 score: scoreVal
@@ -189,12 +241,11 @@ export async function submitScore(req: AuthenticatedRequest, res: Response, next
         try {
             getIO().to(`event-${eventId}`).emit('score-update', { eventId, roundNo })
         } catch (e) {
-            // eslint-disable-next-line no-console
             console.error("Socket emit failed", e)
         }
 
         void logWebEvent({
-            message: `Judge ${userId} submitted score for team ${teamId} in round ${roundNo}`,
+            message: `Judge ${userId} submitted score for participant ${participant.id} in round ${roundNo}`,
             userId
         })
 
@@ -212,26 +263,28 @@ export async function promoteTeam(req: AuthenticatedRequest, res: Response, next
 
         const eventId = Number(req.params.eventId)
         const roundNo = Number(req.params.roundNo)
-        const teamId = Number(req.body.teamId)
+        const teamId = Number(req.body.teamId) // Treated as ID/ParticipantID
         const { selected } = req.body
 
         const isJudge = await prisma.judge.findUnique({ where: { userId_eventId_roundNo: { userId, eventId, roundNo } } })
-        // const isOrganiser = ... // Allow organisers too if needed?
         if (!isJudge) return res.status(403).json({ message: 'Not authorized' })
 
-        // Logic: specific to implementation. Assuming increasing roundNo.
-        // If promoting: roundNo + 1
-        // If removing promotion: roundNo - 1 (or specific round check)
+        // Resolve Participant
+        let participant = await prisma.eventParticipant.findUnique({ where: { id: teamId } })
+        if (!participant || participant.eventId !== eventId) {
+            participant = await prisma.eventParticipant.findFirst({ where: { teamId, eventId } })
+        }
+        if (!participant) return res.status(404).json({ message: 'Participant not found' })
 
-        await prisma.team.update({
-            where: { id: teamId },
+        await prisma.eventParticipant.update({
+            where: { id: participant.id },
             data: {
                 roundNo: selected ? roundNo + 1 : roundNo
             }
         })
 
         void logWebEvent({
-            message: `Judge ${userId} ${selected ? 'promoted' : 'demoted'} team ${teamId} from round ${roundNo}`,
+            message: `Judge ${userId} ${selected ? 'promoted' : 'demoted'} participant ${participant.id} from round ${roundNo}`,
             userId
         })
 
@@ -248,8 +301,8 @@ export async function selectWinner(req: AuthenticatedRequest, res: Response, nex
         if (!userId) return
 
         const eventId = Number(req.params.eventId)
-        const teamId = Number(req.body.teamId)
-        const type = req.body.type // WINNER, RUNNER_UP, etc.
+        const teamId = Number(req.body.teamId) // Participant ID
+        const type = req.body.type
 
         const isJudge = await prisma.judge.findFirst({ where: { userId, eventId } })
         if (!isJudge) return res.status(403).json({ message: 'Not authorized' })
@@ -257,33 +310,24 @@ export async function selectWinner(req: AuthenticatedRequest, res: Response, nex
         const event = await prisma.event.findUnique({ where: { id: eventId } })
         if (!event) return res.status(404).json({ message: 'Event not found' })
 
-        if (event.eventType === 'INDIVIDUAL' || event.eventType === 'INDIVIDUAL_MULTIPLE_ENTRY') {
-            // For individual events, we need the PID. 
-            // We can find the PID from the Team -> TeamMembers -> PID relationship.
-            // Since individual events have 1 team member per team (effectively), we check that.
-            const team = await prisma.team.findUnique({
-                where: { id: teamId },
-                include: { TeamMembers: true }
-            })
-            if (!team || team.TeamMembers.length === 0) return res.status(404).json({ message: 'Team/Participant not found' })
-            const pidId = team.TeamMembers[0].pidId
-
-            await prisma.winners.create({
-                data: {
-                    eventId,
-                    pidId,
-                    type
-                }
-            })
-        } else {
-            await prisma.winners.create({
-                data: {
-                    eventId,
-                    teamId,
-                    type
-                }
-            })
+        // Resolve Participant
+        let participant = await prisma.eventParticipant.findUnique({ where: { id: teamId } })
+        if (!participant || participant.eventId !== eventId) {
+            participant = await prisma.eventParticipant.findFirst({ where: { teamId, eventId } })
         }
+
+        // Wait, for INDIVIDUAL events, old logic extracted PID from Team.
+        // Now it's direct in EventParticipant.
+        if (!participant) return res.status(404).json({ message: 'Participant not found' })
+
+        // Create winner linked to EventParticipant
+        await prisma.winners.create({
+            data: {
+                eventId,
+                eventParticipantId: participant.id,
+                type
+            }
+        })
 
         try {
             getIO().to(`event-${eventId}`).emit('winner-update', { eventId })
@@ -309,7 +353,6 @@ export async function deleteWinner(req: AuthenticatedRequest, res: Response, nex
 
         const winnerId = Number(req.params.winnerId)
 
-        // Auth check...
         const winner = await prisma.winners.findUnique({ where: { id: winnerId } })
         if (!winner) return res.status(404).json({ message: 'Winner not found' })
 
@@ -379,9 +422,7 @@ export async function getWinnersByEvent(req: AuthenticatedRequest, res: Response
         const eventId = Number(req.params.eventId)
         if (!Number.isFinite(eventId)) return res.status(400).json({ message: 'Invalid event id' })
 
-        // Auth check: Admin or Jury for this event
         const isJudge = await prisma.judge.findFirst({ where: { userId, eventId } })
-        // Check if user is Admin to bypass judge check
         if (!isJudge) {
             const userRole = await prisma.userRole.findFirst({
                 where: { userId, role: 'ADMIN' }
@@ -392,25 +433,40 @@ export async function getWinnersByEvent(req: AuthenticatedRequest, res: Response
         const winners = await prisma.winners.findMany({
             where: { eventId },
             include: {
-                Team: {
-                    select: {
-                        id: true,
-                        name: true
-                    }
-                },
-                PID: {
+                EventParticipant: {
                     include: {
-                        User: {
+                        Team: {
                             select: {
-                                name: true,
-                                email: true
+                                id: true,
+                                name: true
+                            }
+                        },
+                        PID: {
+                            include: {
+                                User: {
+                                    select: {
+                                        name: true,
+                                        email: true
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         })
-        return res.status(200).json({ winners })
+
+        // Map to simpler structure
+        const mappedWinners = winners.map(w => {
+            const ep = w.EventParticipant
+            return {
+                ...w,
+                Team: ep.Team, // Or null
+                PID: ep.PID // Or null
+            }
+        })
+
+        return res.status(200).json({ winners: mappedWinners })
     } catch (error) {
         return next(error)
     }
@@ -420,12 +476,6 @@ export async function getAllWinners(req: AuthenticatedRequest, res: Response, ne
     try {
         const userId = ensureAuthUser(req, res)
         if (!userId) return
-
-        // This is for CSV export. Should be accessible to Jury/Admin.
-        // If user is Jury, maybe restrict to events they judge? 
-        // V1 implementation seemed to fetch ALL winners for client-side filtering.
-        // We will fetch all and let client filter or filter by role?
-        // Let's allow fetching all if they have Jury or Admin role.
 
         const winners = await prisma.winners.findMany({
             include: {
@@ -443,41 +493,53 @@ export async function getAllWinners(req: AuthenticatedRequest, res: Response, ne
                         }
                     }
                 },
-                Team: {
+                EventParticipant: {
                     include: {
-                        TeamMembers: {
+                        Team: {
                             include: {
-                                PID: {
+                                TeamMembers: {
                                     include: {
-                                        User: {
-                                            select: {
-                                                name: true,
-                                                email: true,
-                                                phoneNumber: true,
-                                                id: true
+                                        PID: {
+                                            include: {
+                                                User: {
+                                                    select: {
+                                                        name: true,
+                                                        email: true,
+                                                        phoneNumber: true,
+                                                        id: true
+                                                    }
+                                                }
                                             }
                                         }
                                     }
-                                }
+                                },
                             }
                         },
-                    }
-                },
-                PID: {
-                    include: {
-                        User: {
-                            select: {
-                                name: true,
-                                email: true,
-                                phoneNumber: true,
-                                id: true
+                        PID: {
+                            include: {
+                                User: {
+                                    select: {
+                                        name: true,
+                                        email: true,
+                                        phoneNumber: true,
+                                        id: true
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         })
-        return res.status(200).json({ winners })
+
+        // Map structure to be flat-ish or easier to consume?
+        const mappedWinners = winners.map(w => ({
+            ...w,
+            Team: w.EventParticipant.Team,
+            PID: w.EventParticipant.PID
+        }))
+
+        return res.status(200).json({ winners: mappedWinners })
     } catch (error) {
         return next(error)
     }
@@ -493,7 +555,6 @@ export async function getScoreSheet(req: AuthenticatedRequest, res: Response, ne
 
         if (!Number.isFinite(eventId) || !Number.isFinite(roundNo)) return res.status(400).json({ message: 'Invalid identifiers' })
 
-        // Auth check
         const isJudge = await prisma.judge.findFirst({ where: { userId, eventId } })
         if (!isJudge) {
             const userRole = await prisma.userRole.findFirst({
@@ -502,14 +563,15 @@ export async function getScoreSheet(req: AuthenticatedRequest, res: Response, ne
             if (!userRole) return res.status(403).json({ message: 'Not authorized' })
         }
 
-        // Fetch teams with ALL scores
-        const teams = await prisma.team.findMany({
+        const participants = await prisma.eventParticipant.findMany({
             where: {
                 eventId,
                 roundNo,
                 confirmed: true
             },
             include: {
+                Team: true,
+                PID: { include: { User: true } },
                 Score: {
                     where: {
                         Criteria: {
@@ -530,7 +592,23 @@ export async function getScoreSheet(req: AuthenticatedRequest, res: Response, ne
             }
         })
 
-        return res.status(200).json({ teams })
+        // Map to "teams" equivalent structure
+        const mappedTeams = participants.map(p => {
+            const base = p.Team ? p.Team : {
+                id: p.id,
+                name: p.PID?.User.name || 'Unknown',
+                eventId: p.eventId,
+                leaderId: p.PID?.id,
+                // Other fields...
+            };
+            return {
+                ...base,
+                eventParticipantId: p.id,
+                Score: p.Score
+            }
+        })
+
+        return res.status(200).json({ teams: mappedTeams })
     } catch (error) {
         return next(error)
     }

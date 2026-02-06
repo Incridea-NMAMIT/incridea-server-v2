@@ -1,5 +1,6 @@
 import type { NextFunction, Response } from 'express'
 import prisma from '../prisma/client'
+import { DayType } from '@prisma/client'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import type {
   AddOrganiserInput,
@@ -71,7 +72,9 @@ export async function listBranchRepEvents(req: AuthenticatedRequest, res: Respon
         id: true,
         name: true,
         description: true,
-        venue: true,
+        Schedule: {
+          select: { Venue: { select: { id: true, name: true } }, day: true, startTime: true, endTime: true },
+        },
         minTeamSize: true,
         maxTeamSize: true,
         maxTeams: true,
@@ -96,7 +99,8 @@ export async function listBranchRepEvents(req: AuthenticatedRequest, res: Respon
         id: event.id,
         name: event.name,
         description: event.description,
-        venue: event.venue,
+        venue: event.Schedule[0]?.Venue ?? null,
+        schedules: event.Schedule,
         minTeamSize: event.minTeamSize,
         maxTeamSize: event.maxTeamSize,
         maxTeams: event.maxTeams,
@@ -129,11 +133,46 @@ export async function createBranchRepEvent(req: AuthenticatedRequest, res: Respo
       return res.status(403).json({ message: 'Forbidden' })
     }
 
+    const schedulesData = payload.schedules && payload.schedules.length > 0
+      ? await Promise.all(payload.schedules.map(async s => {
+        let venueId: number | null = null
+        if (s.venue) {
+          const v = await prisma.venue.upsert({
+            where: { name: s.venue },
+            create: { name: s.venue },
+            update: {}
+          })
+          venueId = v.id
+        }
+        return {
+          venue: s.venue,
+          venueId,
+          day: s.day,
+          startTime: s.startTime ? new Date(s.startTime) : null,
+          endTime: s.endTime ? new Date(s.endTime) : null,
+        }
+      }))
+      : await (async () => {
+        let venueId: number | null = null
+        if (payload.venue) {
+          const v = await prisma.venue.upsert({
+            where: { name: payload.venue },
+            create: { name: payload.venue },
+            update: {}
+          })
+          venueId = v.id
+        }
+        return [{
+          venue: payload.venue,
+          venueId,
+          day: DayType.Day1, // Defaulting to Day1 if not specified
+        }]
+      })()
+
     const event = await prisma.event.create({
       data: {
         name: payload.name,
         description: payload.description,
-        venue: payload.venue,
         minTeamSize: payload.minTeamSize,
         maxTeamSize: payload.maxTeamSize,
         maxTeams: payload.maxTeams,
@@ -141,6 +180,9 @@ export async function createBranchRepEvent(req: AuthenticatedRequest, res: Respo
         category: payload.category,
         tier: payload.tier,
         branchId: branchRep.branchId,
+        Schedule: {
+          create: schedulesData
+        }
       },
       select: { id: true, name: true, eventType: true, published: true },
     })
@@ -333,7 +375,9 @@ export async function getBranchEventDetails(req: AuthenticatedRequest, res: Resp
         name: true,
         description: true,
         image: true,
-        venue: true,
+        Schedule: {
+          select: { venue: true, day: true, startTime: true, endTime: true },
+        },
         minTeamSize: true,
         maxTeamSize: true,
         maxTeams: true,
@@ -357,6 +401,8 @@ export async function getBranchEventDetails(req: AuthenticatedRequest, res: Resp
     return res.status(200).json({
       event: {
         ...event,
+        venue: event.Schedule[0]?.venue ?? null,
+        schedules: event.Schedule,
         organisers: event.Organisers.map((org) => ({
           userId: org.userId,
           name: org.User?.name ?? '',
@@ -399,15 +445,43 @@ export async function updateBranchEvent(req: AuthenticatedRequest, res: Response
       return res.status(400).json({ message: 'Published events cannot be edited' })
     }
 
+    const { venue, schedules, ...eventData } = payload
+
+    let scheduleUpdate: any = undefined
+
+    if (schedules && schedules.length > 0) {
+      scheduleUpdate = {
+        deleteMany: {},
+        create: schedules.map((s) => ({
+          venue: s.venue,
+          day: s.day,
+          startTime: s.startTime ? new Date(s.startTime) : null,
+          endTime: s.endTime ? new Date(s.endTime) : null,
+        })),
+      }
+    } else if (venue !== undefined) {
+      scheduleUpdate = {
+        updateMany: {
+          where: {},
+          data: { venue },
+        },
+      }
+    }
+
     const updated = await prisma.event.update({
       where: { id: event.id },
-      data: payload,
+      data: {
+        ...eventData,
+        Schedule: scheduleUpdate,
+      },
       select: {
         id: true,
         name: true,
         description: true,
         image: true,
-        venue: true,
+        Schedule: {
+          select: { venue: true, day: true, startTime: true, endTime: true },
+        },
         minTeamSize: true,
         maxTeamSize: true,
         maxTeams: true,
@@ -423,7 +497,13 @@ export async function updateBranchEvent(req: AuthenticatedRequest, res: Response
       userId,
     })
 
-    return res.status(200).json({ event: updated })
+    return res.status(200).json({
+      event: {
+        ...updated,
+        venue: updated.Schedule[0]?.venue ?? null,
+        schedules: updated.Schedule
+      }
+    })
   } catch (error) {
     return next(error)
   }

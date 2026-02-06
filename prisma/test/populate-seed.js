@@ -23,7 +23,7 @@ async function ensureEvent(eventSeed) {
     description: eventSeed.description,
     image: eventSeed.image ?? null,
 
-    venue: eventSeed.venue,
+
     minTeamSize: eventSeed.minTeamSize,
     maxTeamSize: eventSeed.maxTeamSize,
     maxTeams: eventSeed.maxTeams,
@@ -44,7 +44,7 @@ async function main() {
       description: 'Fast-paced robot racing around a technical circuit.',
       image: null,
       fees: randomInt(0, 300),
-      venue: 'Main Ground',
+
       minTeamSize: 1,
       maxTeamSize: 4,
       maxTeams: 40,
@@ -59,7 +59,7 @@ async function main() {
       description: 'Short, sharp coding sprint with algorithmic challenges.',
       image: null,
       fees: randomInt(0, 200),
-      venue: 'CS Lab 3',
+
       minTeamSize: 1,
       maxTeamSize: 2,
       maxTeams: 60,
@@ -74,7 +74,7 @@ async function main() {
       description: 'Simulated trading floor with real-time market twists.',
       image: null,
       fees: randomInt(50, 250),
-      venue: 'Seminar Hall A',
+
       minTeamSize: 1,
       maxTeamSize: 3,
       maxTeams: 50,
@@ -89,7 +89,7 @@ async function main() {
       description: 'Design and build a model bridge to withstand load tests.',
       image: null,
       fees: randomInt(0, 200),
-      venue: 'Workshop Block',
+
       minTeamSize: 2,
       maxTeamSize: 4,
       maxTeams: 35,
@@ -104,7 +104,7 @@ async function main() {
       description: 'General quiz covering tech, pop culture, and current affairs.',
       image: null,
       fees: randomInt(0, 150),
-      venue: 'Auditorium',
+
       minTeamSize: 2,
       maxTeamSize: 3,
       maxTeams: 60,
@@ -119,7 +119,7 @@ async function main() {
       description: '5v5 tactical shooter tournament in LAN setting.',
       image: null,
       fees: randomInt(200, 500),
-      venue: 'Gaming Arena',
+
       minTeamSize: 5,
       maxTeamSize: 6,
       maxTeams: 32,
@@ -134,7 +134,7 @@ async function main() {
       description: 'Elevator pitch competition for innovative ideas.',
       image: null,
       fees: randomInt(0, 150),
-      venue: 'Innovation Center',
+
       minTeamSize: 1,
       maxTeamSize: 2,
       maxTeams: 40,
@@ -149,7 +149,7 @@ async function main() {
       description: 'Autonomous robots race on a complex line track.',
       image: null,
       fees: randomInt(50, 250),
-      venue: 'Lab Quad',
+
       minTeamSize: 1,
       maxTeamSize: 4,
       maxTeams: 45,

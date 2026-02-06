@@ -213,7 +213,6 @@ model Event {
   name        String
   description String?       @db.Text
   image       String?
-  venue       String?
   minTeamSize Int           @default(1)
   maxTeamSize Int           @default(1)
   maxTeams    Int?
@@ -226,9 +225,10 @@ model Event {
   branchId    Int?
   Branch      Branch?       @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
-  day DayType[] @default([Day1])
+  Schedule EventSchedule[]
 
-  Teams Team[]
+  Teams             Team[]
+  EventParticipants EventParticipant[]
 
   Rounds             Round[]
   Winner             Winners[]
@@ -242,31 +242,85 @@ model Event {
   @@index([branchId])
 }
 
-model Team {
-  id        Int     @id @default(autoincrement())
-  name      String
-  roundNo   Int     @default(1)
-  confirmed Boolean @default(false)
-  attended  Boolean @default(false)
-  leaderId  Int?
-  Leader    PID?    @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: SetNull)
+model EventSchedule {
+  id        Int       @id @default(autoincrement())
+  venue     String?
+  day       DayType
+  startTime DateTime?
+  endTime   DateTime?
 
   eventId Int
   Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  Winner Winners?
-
-  Score           Scores[]
-  Comments        Comments[]
-  QuizScores      QuizScore[]
-  TeamMembers     TeamMember[]
-  QuizSubmissions QuizSubmission[]
+  venueId Int?
+  Venue   Venue? @relation(fields: [venueId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([name, eventId])
+  @@index([eventId])
+  @@index([venueId])
+}
+
+model Venue {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  Schedule EventSchedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EventParticipant {
+  id Int @id @default(autoincrement())
+
+  eventId Int
+  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  pidId Int?
+  PID   PID? @relation(fields: [pidId], references: [id], onDelete: Cascade)
+
+  teamId Int?
+  Team   Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  roundNo   Int     @default(1)
+  confirmed Boolean @default(false)
+  attended  Boolean @default(false)
+
+  Score     Scores[]
+  Comments  Comments[]
+  Winners   Winners?
+  QuizScore QuizScore[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  quizSubmissions QuizSubmission[]
+
+  @@unique([eventId, pidId])
+  @@unique([eventId, teamId])
   @@index([eventId, roundNo])
+}
+
+model Team {
+  id   Int    @id @default(autoincrement())
+  name String
+
+  leaderId Int?
+  Leader   PID? @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: SetNull)
+
+  eventId Int
+  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  EventParticipant EventParticipant[]
+  TeamMembers      TeamMember[]
+  QuizSubmissions  QuizSubmission[]
+
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  quizScores QuizScore[]
+
+  @@unique([name, eventId])
   @@index([leaderId])
 }
 
@@ -419,8 +473,8 @@ model Scores {
 
   score String
 
-  teamId Int
-  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  eventParticipantId Int
+  EventParticipant   EventParticipant @relation(fields: [eventParticipantId], references: [id], onDelete: Cascade)
 
   criteriaId Int
   Criteria   Criteria @relation(fields: [criteriaId], references: [id], onDelete: Cascade)
@@ -431,8 +485,8 @@ model Scores {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([teamId, criteriaId, judgeId])
-  @@index([teamId, criteriaId])
+  @@unique([eventParticipantId, criteriaId, judgeId])
+  @@index([eventParticipantId, criteriaId])
   @@index([criteriaId])
   @@index([judgeId])
 }
@@ -442,8 +496,8 @@ model Comments {
 
   comment String
 
-  teamId Int
-  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  eventParticipantId Int
+  EventParticipant   EventParticipant @relation(fields: [eventParticipantId], references: [id], onDelete: Cascade)
 
   eventId Int
   roundNo Int
@@ -455,8 +509,8 @@ model Comments {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([teamId, eventId, roundNo, judgeId])
-  @@index([teamId])
+  @@unique([eventParticipantId, eventId, roundNo, judgeId])
+  @@index([eventParticipantId])
   @@index([eventId, roundNo])
   @@index([judgeId])
 }
@@ -466,21 +520,18 @@ model Winners {
 
   type WinnerType
 
-  teamId Int?  @unique
-  Team   Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
-
-  pidId Int? @unique
-  PID   PID? @relation(fields: [pidId], references: [id], onDelete: Cascade)
+  eventParticipantId Int              @unique
+  EventParticipant   EventParticipant @relation(fields: [eventParticipantId], references: [id], onDelete: Cascade)
 
   eventId Int
   Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  pids      PID[]
 
   @@unique([eventId, type])
-  @@index([teamId])
-  @@index([pidId])
+  @@index([eventParticipantId])
   @@index([eventId])
 }
 
@@ -546,16 +597,18 @@ model Options {
 model QuizSubmission {
   id String @id @default(cuid())
 
-  teamId Int
-  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  eventParticipantId Int
+  EventParticipant   EventParticipant @relation(fields: [eventParticipantId], references: [id], onDelete: Cascade)
 
   optionId String
   Options  Options @relation(fields: [optionId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  team      Team?    @relation(fields: [teamId], references: [id])
+  teamId    Int?
 
-  @@index([teamId])
+  @@index([eventParticipantId])
   @@index([optionId])
 }
 
@@ -567,8 +620,8 @@ model QuizScore {
   flags     Int     @default(0)
   allowUser Boolean @default(true)
 
-  teamId Int
-  Team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  eventParticipantId Int
+  EventParticipant   EventParticipant @relation(fields: [eventParticipantId], references: [id], onDelete: Cascade)
 
   quizId String
   Quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
@@ -577,10 +630,12 @@ model QuizScore {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  team      Team?    @relation(fields: [teamId], references: [id])
+  teamId    Int?
 
-  @@unique([teamId, quizId])
+  @@unique([eventParticipantId, quizId])
   @@index([quizId])
-  @@index([teamId])
+  @@index([eventParticipantId])
 }
 
 model Quiz {
@@ -658,6 +713,7 @@ enum Role {
   JURY
   DOCUMENTATION
   ACCOMMODATION
+  EMC
 }
 
 enum Status {
@@ -760,9 +816,11 @@ model PID {
 
   TeamMembers          TeamMember[]
   LedTeams             Team[]                @relation("TeamLeader")
-  winners              Winners?
+  winners              Winners?              @relation(fields: [winnersId], references: [id])
   AccommodationBooking AccommodationBooking?
   PronitePasses        PronitePass[]
+  eventParticipants    EventParticipant[]
+  winnersId            Int?
 
   @@index([userId])
   @@index([pidCode])

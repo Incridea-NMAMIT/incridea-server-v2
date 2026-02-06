@@ -64,14 +64,20 @@ export const getQuizPublic = async (req: AuthenticatedRequest, res: Response, ne
         }
 
         // Check for existing score/attempt
-        const score = await prisma.quizScore.findUnique({
+        // Find EventParticipant logic
+        const participant = await prisma.eventParticipant.findFirst({
+            where: { teamId: teamMember.teamId }
+        })
+
+        // Check for existing score/attempt
+        const score = participant ? await prisma.quizScore.findUnique({
             where: {
-                teamId_quizId: {
-                    teamId: teamMember.teamId,
+                eventParticipantId_quizId: {
+                    eventParticipantId: participant.id,
                     quizId
                 }
             }
-        })
+        }) : null
 
         return res.json({
             quiz: {
@@ -115,11 +121,17 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
         const quiz = await prisma.quiz.findUnique({ where: { id: quizId } })
         if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
 
-        // Check if already started
+        // Find EventParticipant for the team
+        const participant = await prisma.eventParticipant.findFirst({
+            where: { teamId }
+        })
+        if (!participant) return res.status(404).json({ message: 'Event Participant not found for this team' })
+
+        // Check for existing score/attempt
         const existingScore = await prisma.quizScore.findUnique({
             where: {
-                teamId_quizId: {
-                    teamId,
+                eventParticipantId_quizId: {
+                    eventParticipantId: participant.id,
                     quizId
                 }
             }
@@ -132,12 +144,13 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
         // Start Quiz Attempt
         const newScore = await prisma.quizScore.upsert({
             where: {
-                teamId_quizId: {
-                    teamId,
+                eventParticipantId_quizId: {
+                    eventParticipantId: participant.id,
                     quizId
                 }
             },
             create: {
+                eventParticipantId: participant.id,
                 teamId,
                 quizId,
                 score: 0,
@@ -192,6 +205,12 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
             return res.status(403).json({ message: 'You are not a member of this team' })
         }
 
+        // Find EventParticipant for the team (needed for schema relation)
+        const participant = await prisma.eventParticipant.findFirst({
+            where: { teamId }
+        })
+        if (!participant) return res.status(404).json({ message: 'Event Participant not found for this team' })
+
         // Retrieve quiz to check timing
         const quiz = await prisma.quiz.findUnique({ where: { id: quizId } })
         if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
@@ -201,6 +220,7 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
 
         await prisma.quizSubmission.create({
             data: {
+                eventParticipantId: participant.id,
                 teamId,
                 optionId
             }
@@ -247,39 +267,36 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
         if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
 
         // Get Score and Attempt Start Time
+        // Find EventParticipant logic
+        const participant = await prisma.eventParticipant.findFirst({
+            where: { teamId }
+        })
+        if (!participant) return res.status(404).json({ message: 'Event Participant not found' })
+
         const currentScore = await prisma.quizScore.findUnique({
             where: {
-                teamId_quizId: {
-                    teamId,
+                eventParticipantId_quizId: {
+                    eventParticipantId: participant.id,
                     quizId
                 }
             }
         })
 
         // Calculate Score
-        // 1. Get all submissions for this team and quiz options
         const questionIds = quiz.Questions.map(q => q.id)
 
         const submissions = await prisma.quizSubmission.findMany({
             where: {
-                teamId,
+                eventParticipantId: participant.id,
                 Options: {
-                    questionId: {
-                        in: questionIds
-                    }
+                    questionId: { in: questionIds }
                 }
             },
-            include: {
-                Options: true
-            },
-            orderBy: {
-                createdAt: 'asc'
-            }
+            include: { Options: true },
+            orderBy: { createdAt: 'asc' }
         })
 
-        // Map questionId -> latest submission isCorrect
         const linkMap = new Map<string, boolean>()
-
         submissions.forEach(sub => {
             linkMap.set(sub.Options.questionId, sub.Options.isAnswer)
         })
@@ -289,30 +306,26 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
             if (isCorrect) score += quiz.points
         })
 
-        // Calculate Time Taken
+        // Time Taken
         const now = new Date()
         let timeTaken = 0
-
         if (currentScore?.attemptStartTime) {
             timeTaken = (now.getTime() - new Date(currentScore.attemptStartTime).getTime()) / 1000
         } else {
-            // Fallback if no start time found (should generally not happen with new flow)
-            // Maybe default to max duration or 0? 
-            // Using start of quiz as fallback
             timeTaken = (now.getTime() - new Date(quiz.startTime).getTime()) / 1000
         }
-
         if (timeTaken < 0) timeTaken = 0
 
         // Upsert Score
         await prisma.quizScore.upsert({
             where: {
-                teamId_quizId: {
-                    teamId,
+                eventParticipantId_quizId: {
+                    eventParticipantId: participant.id,
                     quizId
                 }
             },
             create: {
+                eventParticipantId: participant.id,
                 teamId,
                 quizId,
                 score,

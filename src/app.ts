@@ -90,6 +90,9 @@ app.use('/api/stats', statsRoutes)
 import proniteRoutes from './routes/proniteRoutes'
 app.use('/api/pronite', proniteRoutes)
 
+import venueRoutes from './routes/venueRoutes'
+app.use('/api/venue', venueRoutes)
+
 app.use('/api/internal', internalRoutes)
 
 

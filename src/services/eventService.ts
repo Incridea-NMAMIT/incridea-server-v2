@@ -26,7 +26,9 @@ export async function listPublishedEvents() {
       name: true,
       description: true,
       image: true,
-      venue: true,
+      Schedule: {
+        select: { venue: true, day: true, startTime: true, endTime: true },
+      },
       minTeamSize: true,
       maxTeamSize: true,
       maxTeams: true,
@@ -40,8 +42,9 @@ export async function listPublishedEvents() {
     },
   })
 
-  return events.map(({ Rounds, ...rest }) => ({
+  return events.map(({ Rounds, Schedule, ...rest }) => ({
     ...rest,
+    venue: Schedule[0]?.venue ?? null,
     rounds: Rounds,
   }))
 }
@@ -77,7 +80,9 @@ export async function getPublishedEventById(id: number) {
       name: true,
       description: true,
       image: true,
-      venue: true,
+      Schedule: {
+        select: { venue: true, day: true, startTime: true, endTime: true },
+      },
       minTeamSize: true,
       maxTeamSize: true,
       maxTeams: true,
@@ -111,6 +116,7 @@ export async function getPublishedEventById(id: number) {
 
   return {
     ...event,
+    venue: event.Schedule[0]?.venue ?? null,
     rounds: event.Rounds,
     roundsCount: event._count.Rounds,
     organisers: event.Organisers.map((org) => org.User),
