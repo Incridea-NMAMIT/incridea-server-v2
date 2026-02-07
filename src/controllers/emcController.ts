@@ -214,7 +214,7 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
 
 // --- EMC Custom Events ---
 
-export async function getEmcEvents(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+export async function getEmcEvents(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
         const events = await prisma.emcEvent.findMany({
             include: {
