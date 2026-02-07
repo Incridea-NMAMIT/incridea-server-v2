@@ -18,7 +18,8 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
             include: {
                 Schedule: {
                     include: {
-                        Venue: true
+                        Venue: true,
+                        venues: true
                     }
                 },
                 _count: {
@@ -46,8 +47,10 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
                 description: event.description,
                 // Flattened fields for backward compatibility / ease of use in frontend
                 venue: primarySchedule?.Venue ?? null,
+                venues: primarySchedule?.venues ?? [],
                 startDateTime: primarySchedule?.startTime ?? null,
                 endDateTime: primarySchedule?.endTime ?? null,
+                displayRow: primarySchedule?.displayRow ?? null,
                 registrationCount: event._count.EventParticipants
             }
         })
@@ -61,33 +64,46 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
     }
 }
 
+// Helper to find schedule
+async function findSchedule(id: number, type: string) {
+    if (type === 'EMC') {
+        return prisma.eventSchedule.findFirst({
+            where: { emcEventId: id },
+            orderBy: { id: 'asc' }
+        })
+    }
+    return prisma.eventSchedule.findFirst({
+        where: { eventId: id },
+        orderBy: { id: 'asc' }
+    })
+}
+
 export async function updateEventVenue(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
         const { eventId } = req.params
-        const { venueId } = req.body
+        const { venueId, venueIds, type } = req.body
 
-        if (!eventId || !venueId) {
-            res.status(400).json({ message: 'Event ID and Venue ID are required' })
+        if (!eventId || (!venueId && !venueIds)) {
+            res.status(400).json({ message: 'Event ID and Venue ID(s) are required' })
             return
         }
 
         const id = parseInt(eventId)
-        const vId = parseInt(venueId)
+        let vIds: number[] = []
 
-        if (isNaN(id) || isNaN(vId)) {
+        if (venueIds && Array.isArray(venueIds)) {
+            vIds = venueIds.map((v: any) => parseInt(v)).filter((v: number) => !isNaN(v))
+        } else if (venueId) {
+            const vId = parseInt(venueId)
+            if (!isNaN(vId)) vIds.push(vId)
+        }
+
+        if (isNaN(id) || vIds.length === 0) {
             res.status(400).json({ message: 'Invalid IDs' })
             return
         }
 
-        // Upsert schedule. If multiple schedules exist, this logic might be too simple, 
-        // but assuming single schedule per event for now as per previous schema patterns.
-        // If it doesn't exist, create it.
-
-        // First check if any schedule exists
-        const existingSchedule = await prisma.eventSchedule.findFirst({
-            where: { eventId: id },
-            orderBy: { id: 'asc' }
-        })
+        const existingSchedule = await findSchedule(id, type)
 
         let updatedSchedule;
 
@@ -95,21 +111,26 @@ export async function updateEventVenue(req: AuthenticatedRequest, res: Response,
             updatedSchedule = await prisma.eventSchedule.update({
                 where: { id: existingSchedule.id },
                 data: {
-                    venueId: vId,
-                    venue: null // Clear legacy string if linking to Venue entity
-                },
-                include: { Venue: true }
-            })
-        } else {
-            // Create new schedule with default day (Day1) if missing
-            updatedSchedule = await prisma.eventSchedule.create({
-                data: {
-                    eventId: id,
-                    venueId: vId,
-                    day: 'Day1', // Default, should ideally be passed or inferred
+                    venues: { set: vIds.map(vid => ({ id: vid })) },
+                    venueId: vIds.length > 0 ? vIds[0] : null,
                     venue: null
                 },
-                include: { Venue: true }
+                include: { venues: true, Venue: true }
+            })
+        } else {
+            // Create new schedule logic
+            const createData: any = {
+                venues: { connect: vIds.map(vid => ({ id: vid })) },
+                venueId: vIds.length > 0 ? vIds[0] : null,
+                day: 'Day1',
+                venue: null
+            }
+            if (type === 'EMC') createData.emcEventId = id
+            else createData.eventId = id
+
+            updatedSchedule = await prisma.eventSchedule.create({
+                data: createData,
+                include: { venues: true, Venue: true }
             })
         }
 
@@ -117,7 +138,8 @@ export async function updateEventVenue(req: AuthenticatedRequest, res: Response,
             message: 'Venue updated successfully',
             event: {
                 id,
-                venue: updatedSchedule.Venue
+                venue: updatedSchedule.Venue,
+                venues: updatedSchedule.venues
             }
         })
 
@@ -130,7 +152,7 @@ export async function updateEventVenue(req: AuthenticatedRequest, res: Response,
 export async function updateEventTiming(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
         const { eventId } = req.params
-        const { startDateTime, endDateTime } = req.body
+        const { startDateTime, endDateTime, displayRow, type } = req.body
 
         if (!eventId) {
             res.status(400).json({ message: 'Event ID is required' })
@@ -143,12 +165,7 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
             return
         }
 
-        // Logic similar to venue update
-        const existingSchedule = await prisma.eventSchedule.findFirst({
-            where: { eventId: id },
-            orderBy: { id: 'asc' }
-        })
-
+        const existingSchedule = await findSchedule(id, type)
         const start = startDateTime ? new Date(startDateTime) : undefined
         const end = endDateTime ? new Date(endDateTime) : undefined
 
@@ -159,18 +176,23 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
                 where: { id: existingSchedule.id },
                 data: {
                     startTime: start,
-                    endTime: end
+                    endTime: end,
+                    displayRow: displayRow !== undefined ? displayRow : undefined
                 }
             })
         } else {
+            const createData: any = {
+                startTime: start,
+                endTime: end,
+                displayRow: displayRow !== undefined ? displayRow : null,
+                day: 'Day1',
+                venue: null
+            }
+            if (type === 'EMC') createData.emcEventId = id
+            else createData.eventId = id
+
             updatedSchedule = await prisma.eventSchedule.create({
-                data: {
-                    eventId: id,
-                    startTime: start,
-                    endTime: end,
-                    day: 'Day1', // Default
-                    venue: null
-                }
+                data: createData
             })
         }
 
@@ -179,12 +201,112 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
             event: {
                 id,
                 startDateTime: updatedSchedule.startTime,
-                endDateTime: updatedSchedule.endTime
+                endDateTime: updatedSchedule.endTime,
+                displayRow: updatedSchedule.displayRow
             }
         })
 
     } catch (error) {
         next(error)
         return
+    }
+}
+
+// --- EMC Custom Events ---
+
+export async function getEmcEvents(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const events = await prisma.emcEvent.findMany({
+            include: {
+                schedules: {
+                    include: {
+                        Venue: true,
+                        venues: true
+                    }
+                },
+                EmcCategory: true,
+                Venue: true
+            },
+            orderBy: { createdAt: 'desc' }
+        })
+
+        const formattedEvents = events.map(event => {
+            const primarySchedule = event.schedules[0]
+            return {
+                id: event.id,
+                name: event.name,
+                category: event.category ?? event.EmcCategory?.name ?? 'SPECIAL',
+                venue: event.Venue ?? primarySchedule?.Venue ?? null,
+                venues: primarySchedule?.venues ?? (event.Venue ? [event.Venue] : []),
+                startDateTime: primarySchedule?.startTime ?? null,
+                endDateTime: primarySchedule?.endTime ?? null,
+                displayRow: primarySchedule?.displayRow ?? null,
+                type: 'EMC'
+            }
+        })
+
+        res.json({ events: formattedEvents })
+    } catch (error) {
+        next(error)
+    }
+}
+
+export async function createEmcEvent(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const { name, category, emcCategoryId, venueId } = req.body
+
+        if (!name) {
+            res.status(400).json({ message: 'Name is required' })
+            return
+        }
+
+        const data: any = {
+            name,
+            venueId: venueId ? parseInt(venueId) : null,
+            schedules: {
+                create: {
+                    day: 'Day1',
+                    venueId: venueId ? parseInt(venueId) : null,
+                    venues: venueId ? { connect: { id: parseInt(venueId) } } : undefined
+                }
+            }
+        }
+
+        if (emcCategoryId) {
+            data.emcCategoryId = parseInt(emcCategoryId)
+        } else if (category) {
+            data.category = category
+        }
+
+        const event = await prisma.emcEvent.create({
+            data,
+            include: {
+                Venue: true,
+                EmcCategory: true,
+                schedules: {
+                    include: {
+                        venues: true,
+                        Venue: true
+                    }
+                }
+            }
+        })
+
+        // Format for response
+        const formatted = {
+            id: event.id,
+            name: event.name,
+            category: event.category ?? event.EmcCategory?.name ?? 'SPECIAL',
+            venue: event.Venue,
+            venues: event.schedules[0]?.venues ?? (event.Venue ? [event.Venue] : []),
+            startDateTime: null,
+            endDateTime: null,
+            displayRow: null,
+            type: 'EMC'
+        }
+
+        res.json({ event: formatted })
+    } catch (error) {
+        next(error)
     }
 }

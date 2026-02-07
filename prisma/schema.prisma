@@ -243,22 +243,56 @@ model Event {
 }
 
 model EventSchedule {
-  id        Int       @id @default(autoincrement())
-  venue     String?
-  day       DayType
-  startTime DateTime?
-  endTime   DateTime?
+  id         Int       @id @default(autoincrement())
+  venue      String?
+  day        DayType
+  startTime  DateTime?
+  endTime    DateTime?
+  displayRow Int?
 
-  eventId Int
-  Event   Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId Int?
+  Event   Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  emcEventId Int?
+  EmcEvent   EmcEvent? @relation(fields: [emcEventId], references: [id], onDelete: Cascade)
 
   venueId Int?
-  Venue   Venue? @relation(fields: [venueId], references: [id])
+  venues  Venue[] @relation("EventScheduleVenues")
+  Venue   Venue?  @relation("EventScheduleVenue", fields: [venueId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([eventId])
+  @@index([emcEventId])
+  @@index([venueId])
+}
+
+model EmcCategory {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  EmcEvents EmcEvent[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model EmcEvent {
+  id   Int    @id @default(autoincrement())
+  name String
+
+  category      String?
+  emcCategoryId Int?
+  EmcCategory   EmcCategory? @relation(fields: [emcCategoryId], references: [id])
+
+  venueId Int?
+  Venue   Venue? @relation(fields: [venueId], references: [id])
+
+  schedules EventSchedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([emcCategoryId])
   @@index([venueId])
 }
 
@@ -266,10 +300,12 @@ model Venue {
   id   Int    @id @default(autoincrement())
   name String @unique
 
-  Schedule EventSchedule[]
+  Schedule  EventSchedule[] @relation("EventScheduleVenue")
+  schedules EventSchedule[] @relation("EventScheduleVenues")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  emcEvents EmcEvent[]
 }
 
 model EventParticipant {
