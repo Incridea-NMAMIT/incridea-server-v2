@@ -51,7 +51,17 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
                 startDateTime: primarySchedule?.startTime ?? null,
                 endDateTime: primarySchedule?.endTime ?? null,
                 displayRow: primarySchedule?.displayRow ?? null,
-                registrationCount: event._count.EventParticipants
+                registrationCount: event._count.EventParticipants,
+                // New field for full schedule support
+                schedules: event.Schedule.map(s => ({
+                    id: s.id,
+                    startTime: s.startTime,
+                    endTime: s.endTime,
+                    venue: s.Venue,
+                    venues: s.venues,
+                    day: s.day,
+                    displayRow: s.displayRow
+                }))
             }
         })
 
@@ -152,7 +162,7 @@ export async function updateEventVenue(req: AuthenticatedRequest, res: Response,
 export async function updateEventTiming(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
         const { eventId } = req.params
-        const { startDateTime, endDateTime, displayRow, type } = req.body
+        const { startDateTime, endDateTime, displayRow, type, scheduleId, venueIds } = req.body
 
         if (!eventId) {
             res.status(400).json({ message: 'Event ID is required' })
@@ -165,34 +175,62 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
             return
         }
 
-        const existingSchedule = await findSchedule(id, type)
         const start = startDateTime ? new Date(startDateTime) : undefined
         const end = endDateTime ? new Date(endDateTime) : undefined
 
+        let vIds: number[] = []
+        if (venueIds && Array.isArray(venueIds)) {
+            vIds = venueIds.map((v: any) => parseInt(v)).filter((v: number) => !isNaN(v))
+        }
+
         let updatedSchedule;
 
-        if (existingSchedule) {
+        // If scheduleId is provided, UPDATE that specific schedule
+        if (scheduleId) {
+            const updateData: any = {
+                startTime: start,
+                endTime: end,
+                displayRow: displayRow !== undefined ? displayRow : undefined
+            }
+
+            if (vIds.length > 0) {
+                updateData.venues = { set: vIds.map(vid => ({ id: vid })) }
+                updateData.venueId = vIds[0]
+            }
+
             updatedSchedule = await prisma.eventSchedule.update({
-                where: { id: existingSchedule.id },
-                data: {
-                    startTime: start,
-                    endTime: end,
-                    displayRow: displayRow !== undefined ? displayRow : undefined
+                where: { id: parseInt(scheduleId) },
+                data: updateData,
+                include: {
+                    Venue: true,
+                    venues: true
                 }
             })
         } else {
+            // CREATE a new schedule
             const createData: any = {
                 startTime: start,
                 endTime: end,
                 displayRow: displayRow !== undefined ? displayRow : null,
-                day: 'Day1',
-                venue: null
+                day: 'Day1'
             }
+
+            if (vIds.length > 0) {
+                createData.venues = { connect: vIds.map(vid => ({ id: vid })) }
+                createData.venueId = vIds[0]
+            } else {
+                createData.venue = null
+            }
+
             if (type === 'EMC') createData.emcEventId = id
             else createData.eventId = id
 
             updatedSchedule = await prisma.eventSchedule.create({
-                data: createData
+                data: createData,
+                include: {
+                    Venue: true,
+                    venues: true
+                }
             })
         }
 
@@ -202,7 +240,15 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
                 id,
                 startDateTime: updatedSchedule.startTime,
                 endDateTime: updatedSchedule.endTime,
-                displayRow: updatedSchedule.displayRow
+                displayRow: updatedSchedule.displayRow,
+                schedules: [{
+                    id: updatedSchedule.id,
+                    startTime: updatedSchedule.startTime,
+                    endTime: updatedSchedule.endTime,
+                    venue: updatedSchedule.Venue,
+                    venues: updatedSchedule.venues,
+                    day: updatedSchedule.day
+                }]
             }
         })
 
@@ -241,7 +287,16 @@ export async function getEmcEvents(_req: AuthenticatedRequest, res: Response, ne
                 startDateTime: primarySchedule?.startTime ?? null,
                 endDateTime: primarySchedule?.endTime ?? null,
                 displayRow: primarySchedule?.displayRow ?? null,
-                type: 'EMC'
+                type: 'EMC',
+                schedules: event.schedules.map(s => ({
+                    id: s.id,
+                    startTime: s.startTime,
+                    endTime: s.endTime,
+                    venue: s.Venue,
+                    venues: s.venues,
+                    day: s.day,
+                    displayRow: s.displayRow
+                }))
             }
         })
 
@@ -306,6 +361,41 @@ export async function createEmcEvent(req: AuthenticatedRequest, res: Response, n
         }
 
         res.json({ event: formatted })
+    } catch (error) {
+        next(error)
+    }
+}
+
+export async function deleteEventSchedule(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const { scheduleId } = req.params
+
+        if (!scheduleId) {
+            res.status(400).json({ message: 'Schedule ID is required' })
+            return
+        }
+
+        const id = parseInt(scheduleId)
+        if (isNaN(id)) {
+            res.status(400).json({ message: 'Invalid Schedule ID' })
+            return
+        }
+
+        const schedule = await prisma.eventSchedule.findUnique({
+            where: { id }
+        })
+
+        if (!schedule) {
+            res.status(404).json({ message: 'Schedule not found' })
+            return
+        }
+
+        await prisma.eventSchedule.delete({
+            where: { id }
+        })
+
+        res.json({ message: 'Schedule deleted successfully', scheduleId: id })
+
     } catch (error) {
         next(error)
     }

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { authenticateJWT, requireRole } from '../middlewares/authMiddleware'
 import { Role } from '@prisma/client'
-import { getAllEvents, updateEventVenue, updateEventTiming, getEmcEvents, createEmcEvent } from '../controllers/emcController'
+import { getAllEvents, updateEventVenue, updateEventTiming, getEmcEvents, createEmcEvent, deleteEventSchedule } from '../controllers/emcController'
 import { getCategories, createCategory } from '../controllers/emcCategoryController'
 
 const router = Router()
@@ -20,5 +20,7 @@ router.post('/custom-events', requireRole([Role.EMC, Role.ADMIN]), createEmcEven
 
 router.get('/categories', getCategories)
 router.post('/categories', requireRole([Role.EMC, Role.ADMIN]), createCategory)
+
+router.delete('/schedules/:scheduleId', requireRole([Role.EMC, Role.ADMIN]), deleteEventSchedule)
 
 export default router
