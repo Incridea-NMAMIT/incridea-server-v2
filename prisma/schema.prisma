@@ -260,6 +260,8 @@ model EventSchedule {
   venues  Venue[] @relation("EventScheduleVenues")
   Venue   Venue?  @relation("EventScheduleVenue", fields: [venueId], references: [id])
 
+  scheduleStatus String @default("Tentative")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

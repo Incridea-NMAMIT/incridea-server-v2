@@ -52,7 +52,8 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
                     venue: s.Venue,
                     venues: s.venues,
                     day: s.day,
-                    displayRow: s.displayRow
+                    displayRow: s.displayRow,
+                    scheduleStatus: s.scheduleStatus
                 }))
             }
         })
@@ -114,7 +115,8 @@ export async function updateEventVenue(req: AuthenticatedRequest, res: Response,
                 data: {
                     venues: { set: vIds.map(vid => ({ id: vid })) },
                     venueId: vIds.length > 0 ? vIds[0] : null,
-                    venue: null
+                    venue: null,
+                    scheduleStatus: 'Tentative'
                 },
                 include: { venues: true, Venue: true }
             })
@@ -179,7 +181,8 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
             const updateData: any = {
                 startTime: start,
                 endTime: end,
-                displayRow: displayRow !== undefined ? displayRow : undefined
+                displayRow: displayRow !== undefined ? displayRow : undefined,
+                scheduleStatus: 'Tentative'
             }
 
             if (vIds.length > 0) {
@@ -235,7 +238,8 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
                     endTime: updatedSchedule.endTime,
                     venue: updatedSchedule.Venue,
                     venues: updatedSchedule.venues,
-                    day: updatedSchedule.day
+                    day: updatedSchedule.day,
+                    scheduleStatus: updatedSchedule.scheduleStatus
                 }]
             }
         })
@@ -282,7 +286,8 @@ export async function getEmcEvents(_req: AuthenticatedRequest, res: Response, ne
                     venue: s.Venue,
                     venues: s.venues,
                     day: s.day,
-                    displayRow: s.displayRow
+                    displayRow: s.displayRow,
+                    scheduleStatus: s.scheduleStatus
                 }))
             }
         })
@@ -382,6 +387,23 @@ export async function deleteEventSchedule(req: AuthenticatedRequest, res: Respon
 
         res.json({ message: 'Schedule deleted successfully', scheduleId: id })
 
+    } catch (error) {
+        next(error)
+    }
+}
+
+export async function publishSchedules(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+        const result = await prisma.eventSchedule.updateMany({
+            where: {
+                scheduleStatus: 'Tentative'
+            },
+            data: {
+                scheduleStatus: 'Published'
+            }
+        })
+
+        res.json({ message: 'Schedules published successfully', count: result.count })
     } catch (error) {
         next(error)
     }
