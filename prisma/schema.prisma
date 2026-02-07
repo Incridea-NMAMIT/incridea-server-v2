@@ -60,10 +60,9 @@ model User {
   HeadOfCommittee     Committee[]          @relation("CommitteeHeadUser")
   CoHeadOfCommittee   Committee[]          @relation("CommitteeCoHeadUser")
 
-  Judges        Judge[]
-  ScoresGiven   Scores[]
-  CommentsGiven Comments[]
-  Organisers    Organiser[]
+  Judges      Judge[]
+  ScoresGiven Scores[]
+  Organisers  Organiser[]
 
   PaymentOrders     PaymentOrder[]
   RefreshTokens     RefreshToken[]
@@ -327,7 +326,6 @@ model EventParticipant {
   attended  Boolean @default(false)
 
   Score     Scores[]
-  Comments  Comments[]
   Winners   Winners?
   QuizScore QuizScore[]
 
@@ -374,7 +372,6 @@ model Round {
   Quiz   Quiz?
 
   Judges   Judge[]
-  Comments Comments[]
   Criteria Criteria[]
 
   createdAt DateTime @default(now())
@@ -526,30 +523,6 @@ model Scores {
   @@unique([eventParticipantId, criteriaId, judgeId])
   @@index([eventParticipantId, criteriaId])
   @@index([criteriaId])
-  @@index([judgeId])
-}
-
-model Comments {
-  id Int @id @default(autoincrement())
-
-  comment String
-
-  eventParticipantId Int
-  EventParticipant   EventParticipant @relation(fields: [eventParticipantId], references: [id], onDelete: Cascade)
-
-  eventId Int
-  roundNo Int
-  Round   Round @relation(fields: [eventId, roundNo], references: [eventId, roundNo], onDelete: Cascade)
-
-  judgeId Int
-  Judge   User @relation(fields: [judgeId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([eventParticipantId, eventId, roundNo, judgeId])
-  @@index([eventParticipantId])
-  @@index([eventId, roundNo])
   @@index([judgeId])
 }
 
@@ -860,6 +833,9 @@ model PID {
   eventParticipants    EventParticipant[]
   winnersId            Int?
 
+  LeaderboardQuizAnswerSubmissions LeaderboardQuizAnswerSubmission[]
+  LeaderboardTaskSubmissions       LeaderboardTaskSubmission[]
+
   @@index([userId])
   @@index([pidCode])
 }
@@ -1140,4 +1116,101 @@ model MerchOrder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model LeaderboardQuizQuestion {
+  id       String @id @default(cuid())
+  question String
+
+  options LeaderboardQuizOptions[]
+  answers LeaderboardQuizAnswerSubmission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LeaderboardQuizAnswerSubmission {
+  id String @id @default(cuid())
+
+  pidId Int
+  PID   PID @relation(fields: [pidId], references: [id], onDelete: Cascade)
+
+  questionId String
+  Question   LeaderboardQuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  answerCorrect Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pidId])
+  @@index([questionId])
+}
+
+model LeaderboardQuizOptions {
+  id String @id @default(cuid())
+
+  questionId String
+  Question   LeaderboardQuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  option    String
+  isCorrect Boolean
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([questionId])
+}
+
+model LeaderboardTask {
+  id     String  @id @default(cuid())
+  riddle String
+  points Int
+  hint   String?
+
+  hints       LeaderboardTaskHint[]
+  submissions LeaderboardTaskSubmission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LeaderboardTaskHint {
+  id String @id @default(cuid())
+
+  taskId String
+  task   LeaderboardTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  hint   String
+  points Int
+
+  submissions LeaderboardTaskSubmission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([taskId])
+}
+
+model LeaderboardTaskSubmission {
+  id String @id @default(cuid())
+
+  pidId Int
+  PID   PID @relation(fields: [pidId], references: [id], onDelete: Cascade)
+
+  taskId String
+  task   LeaderboardTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  hintTaken Boolean @default(false)
+
+  hintId String?
+  hint   LeaderboardTaskHint? @relation(fields: [hintId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([pidId, taskId])
+  @@index([pidId])
+  @@index([taskId])
+  @@index([hintId])
 }

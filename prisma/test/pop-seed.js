@@ -116,12 +116,129 @@ async function ensureDummyEvents() {
   }
 }
 
+
+async function ensureLeaderboardQuestions() {
+  console.log('Creating/Updating Leaderboard Quiz Questions...')
+
+  const questions = [
+    {
+      question: "What is the capital of France?",
+      options: [
+        { option: "Paris", isCorrect: true },
+        { option: "London", isCorrect: false },
+        { option: "Berlin", isCorrect: false },
+        { option: "Madrid", isCorrect: false },
+      ]
+    },
+    {
+      question: "Which planet is known as the Red Planet?",
+      options: [
+        { option: "Earth", isCorrect: false },
+        { option: "Mars", isCorrect: true },
+        { option: "Jupiter", isCorrect: false },
+        { option: "Saturn", isCorrect: false },
+      ]
+    },
+    {
+      question: "What is the largest mammal in the world?",
+      options: [
+        { option: "Elephant", isCorrect: false },
+        { option: "Blue Whale", isCorrect: true },
+        { option: "Giraffe", isCorrect: false },
+        { option: "Great White Shark", isCorrect: false },
+      ]
+    },
+    {
+      question: "Who wrote 'Romeo and Juliet'?",
+      options: [
+        { option: "Charles Dickens", isCorrect: false },
+        { option: "William Shakespeare", isCorrect: true },
+        { option: "Jane Austen", isCorrect: false },
+        { option: "Mark Twain", isCorrect: false },
+      ]
+    },
+    {
+      question: "What is the chemical symbol for Gold?",
+      options: [
+        { option: "Au", isCorrect: true },
+        { option: "Ag", isCorrect: false },
+        { option: "Fe", isCorrect: false },
+        { option: "Pb", isCorrect: false },
+      ]
+    },
+    {
+      question: "Which language is used for web development?",
+      options: [
+        { option: "Python", isCorrect: false },
+        { option: "JavaScript", isCorrect: true },
+        { option: "C++", isCorrect: false },
+        { option: "Java", isCorrect: false },
+      ]
+    },
+    {
+      question: "How many continents are there?",
+      options: [
+        { option: "5", isCorrect: false },
+        { option: "6", isCorrect: false },
+        { option: "7", isCorrect: true },
+        { option: "8", isCorrect: false },
+      ]
+    },
+    {
+      question: "What is the freezing point of water?",
+      options: [
+        { option: "0°C", isCorrect: true },
+        { option: "100°C", isCorrect: false },
+        { option: "-10°C", isCorrect: false },
+        { option: "32°C", isCorrect: false },
+      ]
+    },
+    {
+      question: "Who painted the Mona Lisa?",
+      options: [
+        { option: "Vincent van Gogh", isCorrect: false },
+        { option: "Pablo Picasso", isCorrect: false },
+        { option: "Leonardo da Vinci", isCorrect: true },
+        { option: "Claude Monet", isCorrect: false },
+      ]
+    },
+    {
+      question: "What connects the computer to the internet?",
+      options: [
+        { option: "Monitor", isCorrect: false },
+        { option: "Mouse", isCorrect: false },
+        { option: "Modem", isCorrect: true },
+        { option: "Printer", isCorrect: false },
+      ]
+    }
+  ]
+
+  for (const q of questions) {
+    // Check if question already exists to avoid duplicates on re-run
+    const existing = await prisma.leaderboardQuizQuestion.findFirst({
+      where: { question: q.question }
+    })
+
+    if (!existing) {
+      await prisma.leaderboardQuizQuestion.create({
+        data: {
+          question: q.question,
+          options: {
+            create: q.options
+          }
+        }
+      })
+    }
+  }
+}
+
 async function main() {
   try {
     await ensureCollege()
     await ensureBranches()
     await ensureTechUsers()
     await ensureDummyEvents()
+    await ensureLeaderboardQuestions()
     console.log('Seeding completed successfully.')
   } catch (error) {
     console.error('Seed error:', error)

@@ -23,7 +23,7 @@ import accommodationRoutes from './routes/accommodationRoutes'
 const app = express()
 
 app.use(helmet())
-app.set('trust proxy', 1) 
+app.set('trust proxy', 1)
 app.use(cors({
   origin: [
     'http://localhost:5173',
@@ -95,7 +95,12 @@ app.use('/api/venue', venueRoutes)
 import emcRoutes from './routes/emcRoutes'
 app.use('/api/emc', emcRoutes)
 
+
+import leaderboardQuizRoutes from './routes/leaderboardQuizRoutes'
+app.use('/api/leaderboard-quiz', leaderboardQuizRoutes)
+
 app.use('/api/internal', internalRoutes)
+
 
 
 app.use((_req, res) => {
