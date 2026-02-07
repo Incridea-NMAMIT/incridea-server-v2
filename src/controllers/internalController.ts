@@ -1,7 +1,6 @@
 import { Request, Response } from 'express'
 import prisma from '../prisma/client'
 
-// Simple secret for internal communication
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || 'supersecretinternal123'
 
 const verifySecret = (req: Request) => {
@@ -21,7 +20,6 @@ export async function getPaymentDetails(req: Request, res: Response) {
 
         if (!order) return res.status(404).json({ message: 'Order not found' })
 
-        // Check if receipt already exists (Idempotency Helper)
         if (order.receipt) {
             return res.status(200).json({ 
                 ...order, 
@@ -32,7 +30,7 @@ export async function getPaymentDetails(req: Request, res: Response) {
         return res.status(200).json({
             order_data: {
                 ...order,
-                collectedAmount: order.collectedAmount.toString() // Ensure BigInt compatibility
+                collectedAmount: order.collectedAmount.toString() 
             },
             user_data: order.User
         })

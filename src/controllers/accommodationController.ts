@@ -6,17 +6,14 @@ import { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import { razorpay } from '../services/razorpay'
 import { logWebEvent } from '../services/logService'
 
-// Get available accommodation stats
 export async function getStats(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const boysVar = await prisma.accommodationRequests.findUnique({ where: { key: 'BoysAccCount' } })
     const girlsVar = await prisma.accommodationRequests.findUnique({ where: { key: 'GirlsAccCount' } })
 
-    // Default to 0 if not set
     const boysTotal = boysVar?.value || 0
     const girlsTotal = girlsVar?.value || 0
 
-    // Count confirmed or pending bookings
     const boysBooked = await prisma.accommodationBooking.count({
       where: {
         accommodationType: Gender.MALE,
@@ -44,20 +41,16 @@ export async function getStats(_req: AuthenticatedRequest, res: Response, next: 
   }
 }
 
-// Update accommodation variables (Head/CoHead only)
 export async function updateVars(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const userId = req.user?.id
     if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
-    // Check if user is Head or CoHead of ACCOMMODATION
     const committee = await prisma.committee.findUnique({
       where: { name: CommitteeName.ACCOMMODATION }
     })
 
     if (!committee || (committee.headUserId !== userId && committee.coHeadUserId !== userId)) {
-      // Allow Admin/Organizer fallback if needed, but strict req says Head/CoHead.
-      // Let's check for Admin as well just in case.
       const userRole = await prisma.userRole.findFirst({
         where: { userId, role: 'ADMIN' }
       })
@@ -95,7 +88,6 @@ export async function updateVars(req: AuthenticatedRequest, res: Response, next:
   }
 }
 
-// Check availability for a specific gender
 export async function checkAvailability(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const { gender } = req.query
@@ -123,7 +115,6 @@ export async function checkAvailability(req: AuthenticatedRequest, res: Response
 }
 
 
-// Create Booking (Individual)
 export async function createIndividualBooking(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const userId = req.user?.id
@@ -150,7 +141,6 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
 
     const gender = user.gender
 
-    // Check availability again (race condition mitigation)
     const key = gender === 'MALE' ? 'BoysAccCount' : 'GirlsAccCount'
     const totalVar = await prisma.accommodationRequests.findUnique({ where: { key } })
     const total = totalVar?.value || 0
@@ -167,7 +157,6 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
       return res.status(400).json({ message: 'Accommodation full for this gender' })
     }
 
-    // Get PID for user
     const pid = await prisma.pID.findUnique({ where: { userId }, select: { id: true, pidCode: true } })
     if (!pid) {
       return res.status(400).json({ message: 'PID not found for user. Please register for the fest first.' })
@@ -186,13 +175,11 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
       return res.status(400).json({ message: 'You have already registered. Please check email for receipt which serves as proof of payment' })
     }
 
-    // Create Booking and Payment Order
     const booking = await prisma.$transaction(async (tx) => {
       const amount = 200
       const amountInRupees = Math.ceil(amount / (1 - 0.0236))
       const amountInPaisa = amountInRupees * 100
 
-      // Create Razorpay Order with Accommodation credentials
       const order = await razorpay.orders.create({
         amount: amountInPaisa,
         currency: 'INR',
@@ -208,7 +195,6 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
       if (!order) throw new Error('Failed to create payment order')
       const orderId = order.id
 
-      // Save to PaymentOrder table instead of AccommodationPayment
       await tx.paymentOrder.create({
         data: {
           orderId: order.id,
@@ -249,7 +235,6 @@ export async function createIndividualBooking(req: AuthenticatedRequest, res: Re
 }
 
 
-// Get Bookings (Admin)
 export async function getBookings(req: Request, res: Response, next: NextFunction) {
   try {
     const { page = 1, limit = 10, search, status, gender } = req.query
@@ -295,7 +280,6 @@ export async function getBookings(req: Request, res: Response, next: NextFunctio
   }
 }
 
-// Get user by PID
 export async function getUserByPid(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
     const { pid } = req.params

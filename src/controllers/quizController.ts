@@ -46,7 +46,6 @@ export const getQuizPublic = async (req: AuthenticatedRequest, res: Response, ne
             return res.status(400).json({ message: 'Quiz has ended' })
         }
 
-        // Check if user is part of a team for this event
         const teamMember = await prisma.teamMember.findFirst({
             where: {
                 userId: user.id,
@@ -63,13 +62,10 @@ export const getQuizPublic = async (req: AuthenticatedRequest, res: Response, ne
             return res.status(403).json({ message: 'You must be registered in a team for this event to take the quiz.' })
         }
 
-        // Check for existing score/attempt
-        // Find EventParticipant logic
         const participant = await prisma.eventParticipant.findFirst({
             where: { teamId: teamMember.teamId }
         })
 
-        // Check for existing score/attempt
         const score = participant ? await prisma.quizScore.findUnique({
             where: {
                 eventParticipantId_quizId: {
@@ -106,7 +102,6 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
-        // Verify team membership
         const isMember = await prisma.teamMember.findFirst({
             where: {
                 userId,
@@ -121,13 +116,11 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
         const quiz = await prisma.quiz.findUnique({ where: { id: quizId } })
         if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
 
-        // Find EventParticipant for the team
         const participant = await prisma.eventParticipant.findFirst({
             where: { teamId }
         })
         if (!participant) return res.status(404).json({ message: 'Event Participant not found for this team' })
 
-        // Check for existing score/attempt
         const existingScore = await prisma.quizScore.findUnique({
             where: {
                 eventParticipantId_quizId: {
@@ -141,7 +134,6 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
             return res.json({ success: true, attemptStartTime: existingScore.attemptStartTime })
         }
 
-        // Start Quiz Attempt
         const newScore = await prisma.quizScore.upsert({
             where: {
                 eventParticipantId_quizId: {
@@ -162,14 +154,12 @@ export const startQuiz = async (req: AuthenticatedRequest, res: Response, next: 
             }
         })
 
-        // Notify team that quiz has started
         try {
             getIO().to(`team-${teamId}`).emit('QUIZ_STARTED', {
                 quizId,
                 attemptStartTime: newScore.attemptStartTime
             })
         } catch (error) {
-            // eslint-disable-next-line no-console
             console.error('Socket notification failed', error)
         }
 
@@ -193,7 +183,6 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
-        // Verify team membership
         const isMember = await prisma.teamMember.findFirst({
             where: {
                 userId,
@@ -205,13 +194,11 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
             return res.status(403).json({ message: 'You are not a member of this team' })
         }
 
-        // Find EventParticipant for the team (needed for schema relation)
         const participant = await prisma.eventParticipant.findFirst({
             where: { teamId }
         })
         if (!participant) return res.status(404).json({ message: 'Event Participant not found for this team' })
 
-        // Retrieve quiz to check timing
         const quiz = await prisma.quiz.findUnique({ where: { id: quizId } })
         if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
 
@@ -226,7 +213,7 @@ export const submitQuizAnswer = async (req: AuthenticatedRequest, res: Response,
             }
         })
 
-        if (Math.random() < 0.05) { // Sample logs to avoid spamming
+        if (Math.random() < 0.05) { 
             void logWebEvent({
                 message: `Team ${teamId} submitted answer for quiz ${quizId}`,
                 userId
@@ -248,7 +235,6 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' })
 
-        // Verify team membership
         const isMember = await prisma.teamMember.findFirst({
             where: {
                 userId,
@@ -266,8 +252,6 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
         })
         if (!quiz) return res.status(404).json({ message: 'Quiz not found' })
 
-        // Get Score and Attempt Start Time
-        // Find EventParticipant logic
         const participant = await prisma.eventParticipant.findFirst({
             where: { teamId }
         })
@@ -282,7 +266,6 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
             }
         })
 
-        // Calculate Score
         const questionIds = quiz.Questions.map(q => q.id)
 
         const submissions = await prisma.quizSubmission.findMany({
@@ -306,7 +289,6 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
             if (isCorrect) score += quiz.points
         })
 
-        // Time Taken
         const now = new Date()
         let timeTaken = 0
         if (currentScore?.attemptStartTime) {
@@ -316,7 +298,6 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
         }
         if (timeTaken < 0) timeTaken = 0
 
-        // Upsert Score
         await prisma.quizScore.upsert({
             where: {
                 eventParticipantId_quizId: {
@@ -343,13 +324,11 @@ export const finishQuiz = async (req: AuthenticatedRequest, res: Response, next:
                 quizId,
                 score
             })
-            // Notify event room for leaderboard refresh
             getIO().to(`event-${quiz.eventId}`).emit('REFRESH_LEADERBOARD', {
                 quizId,
                 eventId: quiz.eventId
             })
         } catch (error) {
-            // eslint-disable-next-line no-console
             console.error('Socket notification failed', error)
         }
 

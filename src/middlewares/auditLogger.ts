@@ -10,9 +10,6 @@ export function auditLogger(req: Request, res: Response, next: NextFunction) {
       return
     }
 
-    // const durationMs = Date.now() - start
-    // const message = `${method} ${req.originalUrl} -> ${res.statusCode} (${durationMs}ms)`
-    // Logging removed as per requirement
   })
 
   next()

@@ -10,9 +10,6 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
             return
         }
 
-        // Check permissions (optional, but good practice if this is strictly EMC)
-        // For now, assuming middleware handles general auth, but we might want to restrict this data 
-        // to relevant roles if it contains sensitive data. Based on context, this is for operations dashboard.
 
         const events = await prisma.event.findMany({
             include: {
@@ -33,10 +30,7 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
             }
         })
 
-        // Map to frontend friendly format
         const formattedEvents = events.map(event => {
-            // Use the first schedule for venue/timing info as per current frontend assumption
-            // Ideally frontend should handle multiple schedules, but for now we flatten.
             const primarySchedule = event.Schedule[0]
 
             return {
@@ -45,14 +39,12 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
                 eventType: event.eventType,
                 category: event.category,
                 description: event.description,
-                // Flattened fields for backward compatibility / ease of use in frontend
                 venue: primarySchedule?.Venue ?? null,
                 venues: primarySchedule?.venues ?? [],
                 startDateTime: primarySchedule?.startTime ?? null,
                 endDateTime: primarySchedule?.endTime ?? null,
                 displayRow: primarySchedule?.displayRow ?? null,
                 registrationCount: event._count.EventParticipants,
-                // New field for full schedule support
                 schedules: event.Schedule.map(s => ({
                     id: s.id,
                     startTime: s.startTime,
@@ -74,7 +66,6 @@ export async function getAllEvents(req: AuthenticatedRequest, res: Response, nex
     }
 }
 
-// Helper to find schedule
 async function findSchedule(id: number, type: string) {
     if (type === 'EMC') {
         return prisma.eventSchedule.findFirst({
@@ -128,7 +119,6 @@ export async function updateEventVenue(req: AuthenticatedRequest, res: Response,
                 include: { venues: true, Venue: true }
             })
         } else {
-            // Create new schedule logic
             const createData: any = {
                 venues: { connect: vIds.map(vid => ({ id: vid })) },
                 venueId: vIds.length > 0 ? vIds[0] : null,
@@ -185,7 +175,6 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
 
         let updatedSchedule;
 
-        // If scheduleId is provided, UPDATE that specific schedule
         if (scheduleId) {
             const updateData: any = {
                 startTime: start,
@@ -207,7 +196,6 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
                 }
             })
         } else {
-            // CREATE a new schedule
             const createData: any = {
                 startTime: start,
                 endTime: end,
@@ -258,7 +246,6 @@ export async function updateEventTiming(req: AuthenticatedRequest, res: Response
     }
 }
 
-// --- EMC Custom Events ---
 
 export async function getEmcEvents(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
@@ -347,7 +334,6 @@ export async function createEmcEvent(req: AuthenticatedRequest, res: Response, n
             }
         })
 
-        // Format for response
         const formatted = {
             id: event.id,
             name: event.name,

@@ -4,14 +4,11 @@ import { PDFDocument, rgb } from 'pdf-lib';
 import bwipjs from 'bwip-js';
 import dotenv from 'dotenv';
 
-// Load environment variables
 const envPath = path.resolve(__dirname, '..', '..', '.env');
 dotenv.config({ path: envPath });
 
-// Configuration
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:4000';
 
-// Paths
 const ASSETS_DIR = path.resolve(__dirname, '..', 'assets');
 const TEMPLATE_PATH = path.join(ASSETS_DIR, 'Receipt-Template.png');
 const LOG_FILE = path.resolve(__dirname, '..', '..', 'logs', 'receipt_generation_ts.log');
@@ -20,7 +17,7 @@ const GENERATED_DIR = path.join(ASSETS_DIR, 'generated_receipts');
 async function log(message: string) {
   const timestamp = new Date().toISOString();
   const msg = `[${timestamp}] ${message}`;
-  console.error(msg); // Log to stderr to keep stdout clean
+  console.error(msg); 
   try {
     await fs.mkdir(path.dirname(LOG_FILE), { recursive: true });
     await fs.appendFile(LOG_FILE, msg + '\n');
@@ -109,11 +106,6 @@ async function generateQrCode(data: string): Promise<Buffer> {
   });
 }
 
-// NOTE: pdf-lib coordinate system starts from bottom-left.
-// The python script used reportlab which also starts from bottom-left (mostly), but images were processed top-left in some contexts.
-// However, the python script clearly uses `c.drawString(x, y)` where y seems to be inverted or relative to bottom.
-// In python: user_details_top_start = template_height - 821.
-// This confirms bottom-left origin. We can reuse the coordinates directly.
 
 export async function generateReceiptPdf(orderData: any, userData: any): Promise<Buffer> {
   if (
@@ -125,13 +117,10 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     throw new Error(`Template not found at ${TEMPLATE_PATH}`);
   }
 
-  // Load template
   const templateBytes = await fs.readFile(TEMPLATE_PATH);
 
-  // Create a new PDF document
   const pdfDoc = await PDFDocument.create();
 
-  // Embed the template image
   const templateImage = await pdfDoc.embedPng(templateBytes);
 
   const width = 2480;
@@ -158,7 +147,6 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     });
   };
 
-  // Section 1: User Details
   const userDetailsLeftMargin = 620;
   const userDetailsTopStart = height - 821;
   const userDetailsLineSpacing = 89;
@@ -182,13 +170,11 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     userDetailsTopStart - userDetailsLineSpacing * 3
   );
 
-  // Add PID
   const pidTopStart = height - 2966;
   const pidLeftMargin = 300;
   const pid = userData.pid || '-';
   drawText(`${pid}`, pidLeftMargin, pidTopStart);
 
-  // Section 2: Payment Details
   const paymentDetailsLeftMargin = 620;
   const paymentDetailsTopStart = height - 1323;
   const paymentDetailsLineSpacing = 88;
@@ -199,7 +185,6 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
   } else if (orderData.type === 'MERCH_PAYMENT' || orderData.type === 'MERCH') {
     paymentTypeStr = 'Merchandise Payment';
 
-    // Attempt to extract size from payment notes
     try {
       let notes: any = {};
       if (orderData.paymentData && typeof orderData.paymentData === 'object') {
@@ -207,23 +192,19 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
         else if (orderData.paymentData.entity && orderData.paymentData.entity.notes) notes = orderData.paymentData.entity.notes;
       }
 
-      // If we have size
       if (notes.size) {
         paymentTypeStr += ` (T-Shirt Size: ${notes.size})`;
       }
     } catch (e) {
-      // Ignore extraction error
     }
   }
   drawText(paymentTypeStr, paymentDetailsLeftMargin, paymentDetailsTopStart);
 
-  // Date of Payment
   let paymentDateStr = '-';
   const paymentDate = orderData.updatedAt;
   if (paymentDate) {
     try {
       const dateObj = new Date(paymentDate);
-      // Format dd/mm/yyyy
       const day = dateObj.getDate().toString().padStart(2, '0');
       const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
       const year = dateObj.getFullYear();
@@ -238,14 +219,12 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     paymentDetailsTopStart - paymentDetailsLineSpacing
   );
 
-  // Order ID
   drawText(
     orderData.orderId,
     paymentDetailsLeftMargin,
     paymentDetailsTopStart - paymentDetailsLineSpacing * 2
   );
 
-  // Payment Data parsing
   let paymentData = orderData.paymentData || {};
   if (typeof paymentData === 'string') {
     try {
@@ -270,7 +249,6 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     paymentDetailsTopStart - paymentDetailsLineSpacing * 4
   );
 
-  // Receipt Generation Date
   const genDateLeftMargin = 1650;
   const genDateTopStart = height - 535;
   const now = new Date();
@@ -281,7 +259,6 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     .padStart(2, '0')}/${now.getFullYear()}`;
   drawText(receiptDate, genDateLeftMargin, genDateTopStart);
 
-  // Amount
   const amount = parseInt(orderData.collectedAmount);
   const amountDetailsLeftMargin = 620;
   const amountDetailsTopStart = height - 1900;
@@ -300,7 +277,6 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     amountDetailsTopStart - amountDetailsLineSpacing - 10
   );
 
-  // QR Code
   const qrContent = `${SERVER_URL}/api/payment/receipt/${orderData.orderId}/verify?paymentId=${paymentId}`;
   await log(`Generated QR Link: ${qrContent}`);
 
@@ -318,7 +294,6 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     height: qrCodeSize,
   });
 
-  // Barcode for PID
   const barcodeX = 1850;
   const barcodeY = 98;
 
@@ -334,13 +309,13 @@ export async function generateReceiptPdf(orderData: any, userData: any): Promise
     });
 
     const barcodeImage = await pdfDoc.embedPng(barcodeBuffer);
-    const barcodeDims = barcodeImage.scale(2.5); // Arbitrary scaling to match legacy look roughly
+    const barcodeDims = barcodeImage.scale(2.5); 
 
     page.drawImage(barcodeImage, {
       x: barcodeX,
       y: barcodeY,
       width: barcodeDims.width,
-      height: 80, // matched to barHeight
+      height: 80, 
     });
   }
 
@@ -364,7 +339,6 @@ export async function generateReceipt(orderData: any, userData: any): Promise<st
   return filePath;
 }
 
-// Only run main if this file is the entry point
 if (require.main === module) {
   (async () => {
     const inputFile = process.argv[2];
@@ -396,7 +370,7 @@ if (require.main === module) {
       }
 
       const filePath = await generateReceipt(orderData, userData);
-      console.log(filePath); // Output logic for script usage matches original
+      console.log(filePath); 
 
     } catch (error) {
       await log(`Error: ${error}`);

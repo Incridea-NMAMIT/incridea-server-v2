@@ -1,14 +1,6 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import bwipjs from 'bwip-js';
 
-/**
- * Stamps a document code on the footer of every page of the PDF.
- * Format: AAABBBYYMMDDCC-DD/EE
- * 
- * @param fileBuffer The original PDF file buffer
- * @param documentCode The generated document code (AAABBBYYMMDDCC)
- * @returns A Promise resolving to the modified PDF buffer
- */
 export const stampPdf = async (fileBuffer: Buffer, documentCode: string): Promise<{ buffer: Buffer, pageCount: number }> => {
   try {
     const pdfDoc = await PDFDocument.load(fileBuffer);
@@ -17,7 +9,6 @@ export const stampPdf = async (fileBuffer: Buffer, documentCode: string): Promis
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontSize = 7;
 
-    // Generate Barcode
     const barcodeBuffer = await bwipjs.toBuffer({
       bcid: 'code128',       
       text: documentCode,    
@@ -32,7 +23,6 @@ export const stampPdf = async (fileBuffer: Buffer, documentCode: string): Promis
 
     pages.forEach((page, index) => {
       const pageNum = index + 1;
-      // Format: CODE-DD/EE (e.g., MED00126011501-01/05)
       const footerText = `${documentCode}-${pageNum.toString().padStart(2, '0')}/${totalPages.toString().padStart(2, '0')}`;
       
       const { width } = page.getSize();

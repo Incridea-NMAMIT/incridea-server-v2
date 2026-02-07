@@ -45,19 +45,15 @@ router.delete('/teams/:teamId/members/:userId', removeTeamMember)
 router.get('/users/search', searchUsers)
 router.post('/teams/:teamId/attendance', validateRequest(markAttendanceSchema), markAttendance)
 
-// Rounds
 router.post('/events/:eventId/rounds', createRound)
 router.delete('/events/:eventId/rounds/:roundNo', deleteRound)
 
-// Judges
 router.post('/events/:eventId/rounds/:roundNo/judges', addJudge)
 router.delete('/events/:eventId/rounds/:roundNo/judges/:judgeUserId', removeJudge)
 
-// Criteria
 router.post('/events/:eventId/rounds/:roundNo/criteria', addCriteria)
 router.delete('/events/:eventId/rounds/:roundNo/criteria/:criteriaId', deleteCriteria)
 
-// Quiz
 router.post('/events/:eventId/rounds/:roundId/quiz', validateRequest(createQuizSchema), createQuiz)
 router.get('/events/:eventId/rounds/:roundId/quiz', getQuiz)
 router.patch('/events/:eventId/quiz/:quizId', validateRequest(updateQuizSchema), updateQuiz)

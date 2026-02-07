@@ -14,7 +14,6 @@ export function ensureAuthUser(req: AuthenticatedRequest, res: Response) {
 
 export async function listDocumentationEvents(_req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
-        // List all events
         const events = await prisma.event.findMany({
             orderBy: [{ published: 'desc' }, { name: 'asc' }],
             include: {
@@ -219,10 +218,6 @@ export async function addOrganiserToEvent(req: AuthenticatedRequest, res: Respon
             return res.status(404).json({ message: 'Event not found' })
         }
 
-        // Only allow adding organisers to branch events? The requirement says "assign user as the organiser for that event" where isBranch is true.
-        // We can enforce isBranch true if strictly required, but generally documentation might want to assign organisers to any event.
-        // User said "shows the list of events where isBranch is true and allow... to assign user". 
-        // So I won't strictly block non-branch events in backend in case requirements evolve, but frontend will filter.
 
         const organiserUser = await prisma.user.findUnique({ where: { email } })
         if (!organiserUser) {
@@ -370,10 +365,6 @@ export async function addBranchRep(req: AuthenticatedRequest, res: Response, nex
             return res.status(404).json({ message: 'User not found' })
         }
 
-        // Check if user is already a branch rep for ANY branch?
-        // Schema: unique([userId, branchId]). It doesn not enforce uniqueness on userId global.
-        // However, a user typically represents one branch. 
-        // For now, let's allow multiple unless requirements specify otherwise. But logic 'isBranchRep' boolean implies simply "is a rep".
         
         const existingRep = await prisma.branchRep.findUnique({
             where: { userId_branchId: { branchId, userId: userToAdd.id } },
@@ -390,8 +381,6 @@ export async function addBranchRep(req: AuthenticatedRequest, res: Response, nex
             include: { User: { select: { id: true, name: true, email: true, phoneNumber: true } } },
         })
 
-        // Also update UserRoles to include DOCUMENTATION? no, they are just branch reps.
-        // Or wait, is BranchRep role separate? 'isBranchRep' boolean in frontend.
 
         void logWebEvent({
             message: `Documentation added branch rep ${userToAdd.email} to branch ${branchId}`,

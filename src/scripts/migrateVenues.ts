@@ -6,7 +6,6 @@ const prisma = new PrismaClient()
 async function main() {
     console.log('Starting venue migration...')
 
-    // 1. Get all schedules with a venue string but no venueId
     const schedules = await prisma.eventSchedule.findMany({
         where: {
             venue: { not: null },
@@ -27,7 +26,6 @@ async function main() {
         let venueId = venueMap.get(venueName)
 
         if (!venueId) {
-            // Check if venue exists in DB (in case script re-runs or concurrency)
             let venue = await prisma.venue.findUnique({
                 where: { name: venueName }
             })
@@ -43,7 +41,6 @@ async function main() {
             venueMap.set(venueName, venueId)
         }
 
-        // Update schedule
         await prisma.eventSchedule.update({
             where: { id: schedule.id },
             data: { venueId: venueId }

@@ -25,7 +25,6 @@ export async function logWebEvent(payload: LogPayload, extra?: Record<string, un
       },
     })
   } catch (error) {
-    // Do not block the main flow if logging fails
     console.error('Failed to write web log', error)
   }
 }

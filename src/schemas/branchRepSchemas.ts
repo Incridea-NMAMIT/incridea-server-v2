@@ -42,7 +42,7 @@ export const updateBranchEventSchema = z
     description: z.string().trim().max(5000, 'Description is too long').optional(),
     venue: z.string().trim().max(255, 'Venue is too long').optional(),
     schedules: z.array(z.object({
-      id: z.number().optional(), // For updating existing schedules
+      id: z.number().optional(), 
       venue: z.string().trim().max(255).optional(),
       day: z.enum(['Day1', 'Day2', 'Day3', 'Day4']),
       startTime: z.string().datetime().optional(),

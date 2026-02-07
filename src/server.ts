@@ -31,17 +31,13 @@ async function start() {
         }
       }
 
-      // eslint-disable-next-line no-console
       console.log(`API server listening on port ${port}`)
-      // eslint-disable-next-line no-console
-      console.log(`➜  Local:   http://localhost:${port}/`)
+      console.log(`➜  Local:   http:
       for (const address of addresses) {
-        // eslint-disable-next-line no-console
-        console.log(`➜  Network: http://${address}:${port}/`)
+        console.log(`➜  Network: http:
       }
     })
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error('Failed to start server', error)
     process.exit(1)
   }

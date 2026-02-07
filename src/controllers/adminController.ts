@@ -93,7 +93,6 @@ export async function putUserRoles(req: AuthenticatedRequest, res: Response, nex
     try {
       getIO().to(`user-${userId}`).emit('ROLE_UPDATED', { roles })
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error('Socket notification failed', error)
     }
 

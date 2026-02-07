@@ -3,7 +3,6 @@ import prisma from '../prisma/client'
 
 export const getStats = async (_req: Request, res: Response) => {
   try {
-    // 1. Session Stats
     const activeSessionsCount = await prisma.session.count({
       where: {
         expiresAt: {
@@ -26,9 +25,6 @@ export const getStats = async (_req: Request, res: Response) => {
       })
     ).length
 
-    // 2. User Stats Helper
-    // We will fetch all users with specific fields to process in memory for graphs
-    // If scale becomes an issue, this should be moved to raw SQL aggregation
     const allUsers = await prisma.user.findMany({
       select: {
         id: true,
@@ -40,32 +36,26 @@ export const getStats = async (_req: Request, res: Response) => {
 
     const matchEmail = (email: string, domain: string) => email.toLowerCase().trim().endsWith(domain.toLowerCase())
 
-    // Categories
     const nitteStudents = allUsers.filter((u) => u.category === 'INTERNAL')
     const externalStudents = allUsers.filter((u) => u.category === 'EXTERNAL')
     const alumniStudents = allUsers.filter((u) => u.category === 'ALUMNI')
 
-    // Sub-categories within Nitte/Internal (or general based on email as requested)
     const nmamitStudents = allUsers.filter((u) => matchEmail(u.email, '@nmamit.in'))
     const universityStudents = allUsers.filter((u) => matchEmail(u.email, '@student.nitte.edu.in'))
     const nmitStudents = allUsers.filter((u) => matchEmail(u.email, '@nmit.ac.in'))
     const universityFaculties = allUsers.filter((u) => matchEmail(u.email, '@nitte.edu.in'))
 
-    // 3. Graph Data Generation
-    // Helper to group by date (YYYY-MM-DD)
     const groupByDate = (users: typeof allUsers) => {
       const counts: Record<string, number> = {}
       users.forEach((u) => {
         const date = u.createdAt.toISOString().split('T')[0]
         counts[date] = (counts[date] || 0) + 1
       })
-      // Convert to array and sort
       return Object.entries(counts)
         .map(([date, count]) => ({ date, count }))
         .sort((a, b) => a.date.localeCompare(b.date))
     }
 
-    // Cumulative sum for graphs (Growth over time)
     const toCumulative = (data: { date: string; count: number }[]) => {
       let sum = 0
       return data.map((d) => {

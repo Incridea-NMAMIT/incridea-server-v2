@@ -10,7 +10,6 @@ export interface AuthenticatedRequest extends Request {
 }
 
 export async function authenticateJWT(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  // Strictly enforce cookie usage
   const tokenToVerify = req.cookies?.token
 
   if (!tokenToVerify) {
@@ -27,27 +26,20 @@ export async function authenticateJWT(req: AuthenticatedRequest, res: Response, 
       return res.status(401).json({ message: 'Invalid token payload' })
     }
 
-    // DB Session Check
     if (sessionId) {
-      // If token has sessionId, it MUST exist in DB
       const session = await prisma.session.findUnique({
         where: { id: sessionId }
       })
 
-      if (!session || session.userId !== userId) { // Check userId match for security
+      if (!session || session.userId !== userId) { 
         return res.status(401).json({ message: 'Session expired or invalid' })
       }
 
-      // Optional: Check expiration if you want strict DB expiration, 
-      // though JWT expiration handles stateless part. 
-      // We set session expiresAt in DB, let's check it.
       if (session.expiresAt < new Date()) {
-        // Clean up expired session async
         await prisma.session.delete({ where: { id: sessionId } }).catch(() => { })
         return res.status(401).json({ message: 'Session expired' })
       }
     } else {
-      // Strictly require sessionId in token
       return res.status(401).json({ message: 'Invalid session structure. Please login again.' })
     }
 
@@ -66,7 +58,7 @@ export function requireRole(roles: string[]) {
 
       const user = await prisma.user.findUnique({
         where: { id: req.user.id },
-        include: { UserRoles: true } // Ensure roles are fetched
+        include: { UserRoles: true } 
       })
 
       if (!user) return res.status(401).json({ message: 'User not found' })

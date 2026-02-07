@@ -26,14 +26,12 @@ export const receiptWorker = new Worker(
         io.to(`user-${userId}`).emit('generating_receipt');
       }
 
-      // 1. Generate PDF Buffer
       console.log(`[ReceiptWorker] Generating PDF for ${orderId}...`);
       const receiptBuffer = await generateReceiptPdf(orderData, userData);
       if (!receiptBuffer) throw new Error('Failed to generate receipt PDF (empty buffer)');
 
       const receiptFilename = `receipt_${orderId}.pdf`;
 
-      // 2. Upload using Buffer with Timeout (30s)
       console.log(`[ReceiptWorker] Uploading PDF for ${orderId}...`);
 
       const uploadPromise = uploadReceipt({ buffer: receiptBuffer, name: receiptFilename });
@@ -47,7 +45,6 @@ export const receiptWorker = new Worker(
 
       console.log(`[ReceiptWorker] Upload successful: ${receiptUrl}`);
 
-      // 3. Update DB
       await prisma.paymentOrder.update({
         where: { orderId: orderId },
         data: { receipt: receiptUrl },
@@ -58,7 +55,6 @@ export const receiptWorker = new Worker(
         io.to(`user-${userId}`).emit('receipt_generated', { receiptUrl });
       }
 
-      // 4. Send Email
       try {
         let paymentType = 'Incridea Fest Registration Fee';
         if (orderData.type === 'ACC_REGISTRATION') {
@@ -89,13 +85,13 @@ export const receiptWorker = new Worker(
       return { receiptUrl };
     } catch (error) {
       console.error(`[ReceiptWorker] Job failed for ${orderId}:`, error);
-      throw error; // Triggers retry
+      throw error; 
     }
   },
   {
     connection,
-    concurrency: 20, // Reduced concurrency to be safe
-    lockDuration: 60000, // Increase lock duration to 60s
+    concurrency: 20, 
+    lockDuration: 60000, 
   }
 );
 

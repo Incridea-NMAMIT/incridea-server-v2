@@ -13,7 +13,6 @@ export function validateRequest(schema: ZodTypeAny) {
       })
     }
 
-    // Attach parsed data for downstream handlers
     req.body = result.data
     return next()
   }

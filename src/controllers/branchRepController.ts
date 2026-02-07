@@ -165,7 +165,7 @@ export async function createBranchRepEvent(req: AuthenticatedRequest, res: Respo
         return [{
           venue: payload.venue,
           venueId,
-          day: DayType.Day1, // Defaulting to Day1 if not specified
+          day: DayType.Day1, 
         }]
       })()
 

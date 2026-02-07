@@ -2,7 +2,7 @@ import { getUtilityEmailHtml } from './utilityEmail';
 import { env } from '../utils/env';
 
 export const getPaymentReceiptEmailHtml = (name: string, paymentType: string): string => {
-  const contactUrl = `${env.frontendUrl}/contact`; // Assuming env.frontendUrl exists, otherwise user provided 'VITE_MAIN_URL' which implies frontend
+  const contactUrl = `${env.frontendUrl}/contact`; 
 
   const content = `
     <h2 style="font-size: 24px; font-weight: 700; color: #ffffff; margin: 0 0 24px; text-align: center;">Payment Receipt</h2>

@@ -8,19 +8,17 @@ async function main() {
     console.log("Starting debug...");
     const currentDate = new Date();
     
-    // Mock Order Data for ACC
     const orderData = {
         orderId: 'order_acc_debug_123',
         type: 'ACC_REGISTRATION',
         updatedAt: currentDate,
-        collectedAmount: 200, // Number
+        collectedAmount: 200, 
         paymentData: {
             id: 'pay_123',
             method: 'upi',
         }
     };
 
-    // Mock User Data
     const userData = {
         name: 'Debug User',
         email: 'debug@example.com',
@@ -39,8 +37,6 @@ async function main() {
         console.log(`Saved locally to ${dumpPath}`);
 
         console.log("Uploading to UploadThing...");
-        // Comment out real upload to save bandwidth/tokens if only debugging generation first
-        // But the error might be in upload, so let's try.
         const url = await uploadReceipt({ buffer, name: `debug_receipt_${orderData.orderId}.pdf` });
         console.log(`Upload Result: ${url}`);
         

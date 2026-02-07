@@ -68,7 +68,6 @@ export async function setUserRoles(userId: number, payload: UpdateUserRolesInput
     throw new AppError('User not found', 404)
   }
 
-  // Always ensure USER role remains
   const requestedRoles = Array.from(new Set([...payload.roles, Role.USER]))
 
   await prisma.$transaction(async (tx) => {

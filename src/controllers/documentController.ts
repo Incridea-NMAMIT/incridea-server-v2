@@ -40,20 +40,17 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
         let sharedCommittees: { name: string, access: 'HEAD_ONLY' | 'HEAD_AND_COHEAD' }[] = [];
         if (sharedCommitteesStr) {
             try {
-                // Parse the new structure: array of objects { name: string, access: AccessType }
                 const parsed = JSON.parse(sharedCommitteesStr);
                 if (Array.isArray(parsed)) {
                     sharedCommittees = parsed;
                 }
             } catch (e) {
-                // ignore
             }
         }
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
         if (!file) return res.status(400).json({ message: 'No file uploaded' });
 
-        // Check if user is Document Committee Member/Head
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         if (!docCommittee) return res.status(500).json({ message: 'Documentation committee not found' });
 
@@ -71,7 +68,6 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
 
         if (!isMember && !isHead && !isAdmin && !isDocRole) {
             if (isTargetHead) {
-                // Check if committee has document creation access
                 if (!targetCommittee.canCreateDocuments) {
                     return res.status(403).json({ message: 'Forbidden: Document creation is disabled for this committee' });
                 }
@@ -81,48 +77,12 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
             }
         }
 
-        // If user is Head, check if they can create classified documents if requested (though we forced it above for heads?)
-        // "Beside this also make a checkbox that says allow create classified documents?"
-        // The requirement says: "only those committees heads/co heads can create their own documents... Beside this also make a checkbox that says allow create classified documents?"
-        // "And heads of committee who have create classified documents checked can create a classfieid document"
 
-        // Wait, if "Create Access" is true, they can create documents.
-        // If "Classified Access" is true, they can create CLASSIFIED documents.
-        // If "Classified Access" is false, can they create NON-classified documents?
-        // "Heads creating docs are classified by default/enforcement" -> Line 205 in frontend: formData.append('isClassified', 'true');
-        // And backend line 74: `isClassified = true`.
 
-        // So, if "Classified Access" is FALSE, and we FORCE `isClassified=true`, then they inherently CANNOT create documents at all?
-        // OR: "Classified Access" checkbox controls if they can create *Classified* documents. 
-        // Maybe we should NOT force `isClassified=true` if they don't have Classified Access, but instead let them create General documents?
-        // But the prompt says: "Heads ... who the head of documentation has given access to create documents must get the create document button."
-        // "And heads of committee who have create classified documents checked can create a classfieid document"
 
-        // Interpretation:
-        // 1. Create Documents Access = Can they see the button? Yes. Can they create *some* document? Yes.
-        // 2. Create Classified Access = Can they create *Classified* document?
 
-        // If they have (1) but NOT (2), they should be able to create a NON-classified document.
-        // So I should REMOVE `isClassified = true` enforcement if they don't have permission?
-        // Or better: Logic flow:
-        // IF `isTargetHead`:
-        //    Check `canCreateDocuments`. If false, Error.
-        //    IF `isClassified` passed as true (or forced):
-        //        Check `canCreateClassified`. If false, Error? Or fallback to Unclassified?
-        //        Prompt: "only those committes heads/co heads can create thier own documents... allow create classified documents?"
-        //        "And heads of committee who have create classified documents checked can create a classfieid document"
 
-        // Current Code enforces `isClassified = true` at line 74.
-        // I should change logic:
-        // IF `isTargetHead`:
-        //    Verify `canCreateDocuments`.
-        //    IF requesting Classified (from frontend):
-        //         Verify `canCreateClassified`.
-        //    ELSE
-        //         Allow (General Document).
 
-        // Implies frontend should NOT send `isClassified=true` by default if they don't have permission.
-        // But backend must enforce.
 
         if (isTargetHead && !isHead && !isMember && !isAdmin && !isDocRole) {
             if (!targetCommittee.canCreateDocuments) {
@@ -133,15 +93,10 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
                     return res.status(403).json({ message: 'Forbidden: Classified document creation is disabled for this committee' });
                 }
             }
-            // If they are Head, and NOT creating classified (or allowed to), does it need to be flagged somehow?
-            // "Heads creating docs are classified by default" was the OLD logic.
-            // If I remove that enforcement, they can create General docs.
         }
 
-        // Check for CoHead creation permission
 
 
-        // If user is NOT Head and NOT Admin and NOT Target Head, check for classified creation permission (applies to CoHead/Member/DocRole)
         if (!isHead && !isAdmin && !isTargetHead && isClassified) {
             const allowClassifiedSetting = await prisma.setting.findUnique({ where: { key: 'DOC_ALLOW_CREATE_CLASSIFIED' } });
             if (!allowClassifiedSetting?.value) {
@@ -156,7 +111,6 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
 
         if (!committeeCode && !isClassified) return res.status(400).json({ message: 'Invalid committee' });
 
-        // Fix: Use Max ID instead of Count to avoid collisions on deletion
         const lastDoc = await prisma.document.findFirst({
             where: {
                 documentCode: {
@@ -188,10 +142,8 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
 
         const documentCode = `${committeeCode}${bbb}${dateStr}${cc}`;
 
-        // Stamp the PDF
         const { buffer: stampedBuffer, pageCount } = await stampPdf(file.buffer, documentCode);
 
-        // Upload to UploadThing
         const uploadResponse = await utapi.uploadFiles([
             new File([stampedBuffer as any], file.originalname, { type: 'application/pdf' })
         ]);
@@ -203,7 +155,6 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
 
         const uploadedUrl = uploadResponse[0].data.ufsUrl;
 
-        // Fetch shared committee IDs
         const sharedCommitteeNames = sharedCommittees.map(sc => sc.name);
         const sharedCommitteeRecords = await prisma.committee.findMany({
             where: { name: { in: sharedCommitteeNames as CommitteeName[] } }
@@ -220,7 +171,6 @@ export const createDocument = async (req: AuthenticatedRequest, res: Response) =
                 }
             });
 
-            // Create DocumentAccess records
             if (isClassified && sharedCommittees.length > 0) {
                 for (const sc of sharedCommittees) {
                     const com = sharedCommitteeRecords.find(c => c.name === sc.name);
@@ -264,7 +214,6 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
         if (!file) return res.status(400).json({ message: 'No file uploaded' });
 
-        // Auth Check
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         if (!docCommittee) return res.status(500).json({ message: 'Documentation committee not found' });
 
@@ -276,9 +225,6 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
         const isDocRole = await prisma.userRole.findFirst({ where: { userId, role: 'DOCUMENTATION' } });
 
         if (!isMember && !isHead && !isAdmin && !isDocRole) {
-            // Check if user is Committee Head/CoHead of the document's committee
-            // We need to fetch committee of the document first, but we haven't fetched docDetails yet.
-            // Let's fetch docDetails first (swap order).
         }
 
         const docDetails = await prisma.documentDetails.findUnique({
@@ -288,7 +234,6 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
 
         if (!docDetails) return res.status(404).json({ message: 'Document not found' });
 
-        // Moved Auth Check here
         if (!isMember && !isHead && !isAdmin && !isDocRole) {
             const targetCommittee = docDetails.committee;
             const isTargetHead = (targetCommittee.headUserId === userId || targetCommittee.coHeadUserId === userId);
@@ -297,9 +242,6 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
                 if (!targetCommittee.canCreateDocuments) {
                     return res.status(403).json({ message: 'Forbidden: Document creation is disabled for this committee' });
                 }
-                // Allow revision. Does revision inherit "Classified"?
-                // Revisions usually follow the original document's nature.
-                // If original is Classified, do they need Classified Access?
                 if (docDetails.isClassified && !targetCommittee.canCreateClassified) {
                     return res.status(403).json({ message: 'Forbidden: You cannot modify classified documents' });
                 }
@@ -311,7 +253,6 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
         const lastDoc = docDetails.Documents[0];
         if (!lastDoc) return res.status(500).json({ message: 'No versions found' });
 
-        // Enforce Ownership for Members/DocRole (Non-Admins/Non-Heads of Doc)
         if (!isAdmin && !isHead && (isMember || isDocRole)) {
             if (lastDoc.generatedById !== userId) {
                 return res.status(403).json({ message: 'Forbidden: You can only revise your own documents.' });
@@ -320,7 +261,6 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
 
         const newVersion = lastDoc.version + 1;
 
-        // Code Generation
         const bbb = lastDoc.documentCode.substring(3, 6);
         let committeeCode = CommitteeCodeMap[docDetails.committee.name];
         if (docDetails.isClassified) {
@@ -336,10 +276,8 @@ export const addRevision = async (req: AuthenticatedRequest, res: Response) => {
 
         const documentCode = `${committeeCode}${bbb}${dateStr}${cc}`;
 
-        // Stamp the PDF
         const { buffer: stampedBuffer, pageCount } = await stampPdf(file.buffer, documentCode);
 
-        // Upload to UploadThing
         const uploadResponse = await utapi.uploadFiles([
             new File([stampedBuffer as any], file.originalname, { type: 'application/pdf' })
         ]);
@@ -387,7 +325,6 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
 
         if (allCommitteeIds.length === 0) return res.json({ owned: [], shared: [] });
 
-        // 1. Fetch Owned Documents
         const ownedDocs = await prisma.documentDetails.findMany({
             where: { committeeId: { in: allCommitteeIds } },
             include: {
@@ -398,8 +335,6 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
             orderBy: { createdAt: 'desc' }
         });
 
-        // 2. Fetch Shared Documents via DocumentAccess
-        // We find all access records pointing to any of the user's committees
         const accessRecords = await prisma.documentAccess.findMany({
             where: { committeeId: { in: allCommitteeIds } },
             include: {
@@ -412,12 +347,11 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
             }
         });
 
-        // 3. Filter Access Records based on Role
         const validAccessRecords = accessRecords.filter(access => {
             const isHead = headCommitteeIds.includes(access.committeeId);
             const isCoHead = coHeadCommitteeIds.includes(access.committeeId);
 
-            if (isHead || isCoHead) return true; // Heads and Co-Heads see everything shared with their committee
+            if (isHead || isCoHead) return true; 
 
             return false;
         });
@@ -427,7 +361,6 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
             sharedVia: a.committeeId
         }));
 
-        // 4. Fetch Documents Shared via User Access (Directly to User)
         const userAccessDocs = await prisma.documentUserAccess.findMany({
             where: { userId },
             include: {
@@ -447,18 +380,15 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
 
         const allSharedDocs = [...sharedDocs, ...userSharedDocs];
 
-        // Remove duplicates
         const uniqueSharedDocs = Array.from(new Map(allSharedDocs.map(item => [item.id, item])).values());
 
-        // Helper to attach user names
         const attachUserNames = async (docs: any[]) => {
             return Promise.all(docs.map(async d => {
-                const latestDoc = d.Documents[0]; // Assuming sorted by version desc
+                const latestDoc = d.Documents[0]; 
                 let createdByName = 'Unknown';
                 let revisedByName = null;
 
                 if (latestDoc) {
-                    // Fetch Creator (First Version)
                     const firstDoc = await prisma.document.findFirst({
                         where: { docDetailsId: d.id, version: 1 },
                         select: { generatedById: true }
@@ -472,7 +402,6 @@ export const getDocumentsByCommittee = async (req: AuthenticatedRequest, res: Re
                         createdByName = creator?.name || 'Unknown';
                     }
 
-                    // Fetch Reviser (Latest Version if version > 1)
                     if (latestDoc.version > 1) {
                         const reviser = await prisma.user.findUnique({
                             where: { id: latestDoc.generatedById },
@@ -500,7 +429,6 @@ export const getAllDocuments = async (req: AuthenticatedRequest, res: Response) 
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-        // Auth: Doc Team or Admin
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         if (!docCommittee) return res.status(500).json({ message: 'Documentation committee not found' });
 
@@ -522,12 +450,8 @@ export const getAllDocuments = async (req: AuthenticatedRequest, res: Response) 
 
 
         if (isAdmin || isHead || isCoHead) {
-            // No filter, see everything
             whereCondition = {};
         } else {
-            // Member
-            // "can see all the files created the user" (General)
-            // Fix: Members should see ALL their own documents, regardless of classification.
             whereCondition = {
                 Documents: { some: { generatedById: userId } }
             };
@@ -546,8 +470,6 @@ export const getAllDocuments = async (req: AuthenticatedRequest, res: Response) 
             orderBy: { createdAt: 'desc' }
         });
 
-        // Also we need to attach "createdBy" info if Head to show "created by whom".
-        // Documents include `generatedById`. We might want to include User.
         const docsWithUser = await Promise.all(docs.map(async d => {
             const latestDoc = d.Documents[0];
             if (latestDoc) {
@@ -576,7 +498,6 @@ export const shareDocumentWithCoHead = async (req: AuthenticatedRequest, res: Re
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         if (!docCommittee) return res.status(500).json({ message: 'Documentation committee not found' });
 
-        // Only Head can share
         if (docCommittee.headUserId !== userId) {
             return res.status(403).json({ message: 'Only Documentation Head can share documents' });
         }
@@ -587,20 +508,8 @@ export const shareDocumentWithCoHead = async (req: AuthenticatedRequest, res: Re
 
         if (!docDetails) return res.status(404).json({ message: 'Document not found' });
 
-        // This function was for specific document sharing. 
-        // The prompt asks for "share to co head toggle in classified tab" -> GLOBAL switch?
-        // "until the Head of the documentation click on share to co head toggle in classified tab"
-        // It sounds like a Global Toggle for the tab visibility.
-        // But also "Also keep a allow co head to create classified toggle" -> Definitely Global.
 
-        // However, the existing `shareDocumentWithCoHead` logic suggests per-document sharing.
-        // I will leave this as is, but maybe unused if we switch to global toggles.
-        // Or maybe this is for sharing *specific* classified documents if the toggle is off? 
-        // The prompt implies a "toggle in classified tab" -> Visual Toggle for the whole list?
-        // "The classified and Committee Wise Shared Documents are visible to only the head ... until the Head ... click on share to co head toggle"
-        // This strongly suggests a Global Visibility Toggle.
 
-        // I will keep this function but it might be redundant or for granular overrides.
 
         const existingAccess = await prisma.documentAccess.findFirst({
             where: { documentId: Number(documentId), committeeId: docCommittee.id }
@@ -633,7 +542,6 @@ export const getSharedDocuments = async (req: AuthenticatedRequest, res: Respons
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-        // Auth: Doc Team (Head/CoHead) or Admin
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         if (!docCommittee) return res.status(500).json({ message: 'Documentation committee not found' });
 
@@ -645,16 +553,13 @@ export const getSharedDocuments = async (req: AuthenticatedRequest, res: Respons
             return res.status(403).json({ message: 'Forbidden' });
         }
 
-        // Check toggle for CoHead
         if (isCoHead) {
             const shareSharedSetting = await prisma.setting.findUnique({ where: { key: 'DOC_SHARE_SHARED' } });
             if (!shareSharedSetting?.value) {
-                // If toggle is OFF, CoHead sees NOTHING in shared?
                 return res.json([]);
             }
         }
 
-        // 1. Incoming: Documents from OTHER committees that are Classified (and effectively shared with Doc Team by system rule)
         const incomingDocs = await prisma.documentDetails.findMany({
             where: {
                 isClassified: true,
@@ -668,8 +573,6 @@ export const getSharedDocuments = async (req: AuthenticatedRequest, res: Respons
             }
         });
 
-        // 2. Outgoing: Documents created by Documentation Team that are SHARED
-        // Shared via Committee Access OR User Access
         const outgoingDocs = await prisma.documentDetails.findMany({
             where: {
                 committeeId: docCommittee.id,
@@ -686,23 +589,14 @@ export const getSharedDocuments = async (req: AuthenticatedRequest, res: Respons
             }
         });
 
-        // Merge and process
         const allDocs = [...incomingDocs, ...outgoingDocs];
 
-        // Attach Creator Name & Logic
-        // We do this processing here to help the frontend? 
-        // Actually, let's just return the rich data and let frontend group it.
-        // But we need to make sure we attach CreatedBy/RevisedBy names as per previous request (DocumentsPage.tsx).
-        // Since this is the same controller used by Dashboard? No, Dashboard uses `fetchSharedDocuments` -> `getSharedDocuments`.
-        // Operations uses `getDocumentsByCommittee`.
-        // So we just need to ensure consistent user name attachment.
 
         const docsWithUser = await Promise.all(allDocs.map(async d => {
             const latestDoc = d.Documents[0];
             let createdByName = 'Unknown';
             let revisedByName = null;
             if (latestDoc) {
-                // Creator
                 const firstDoc = await prisma.document.findFirst({
                     where: { docDetailsId: d.id, version: 1 },
                     select: { generatedById: true }
@@ -711,7 +605,6 @@ export const getSharedDocuments = async (req: AuthenticatedRequest, res: Respons
                     const creator = await prisma.user.findUnique({ where: { id: firstDoc.generatedById }, select: { name: true } });
                     createdByName = creator?.name || 'Unknown';
                 }
-                // Reviser
                 if (latestDoc.version > 1) {
                     const reviser = await prisma.user.findUnique({ where: { id: latestDoc.generatedById }, select: { name: true } });
                     revisedByName = reviser?.name;
@@ -727,7 +620,6 @@ export const getSharedDocuments = async (req: AuthenticatedRequest, res: Respons
     }
 };
 
-// --- New Settings Controllers ---
 
 export const getDocumentSettings = async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -771,10 +663,8 @@ export const getDocumentById = async (req: AuthenticatedRequest, res: Response) 
 
         if (!docDetails) return res.status(404).json({ message: 'Document not found' });
 
-        // Access Control Logic
         let hasAccess = false;
 
-        // 0. Owner / Creator
         const firstDoc = await prisma.document.findFirst({
             where: { docDetailsId: docDetails.id, version: 1 },
             select: { generatedById: true }
@@ -783,11 +673,9 @@ export const getDocumentById = async (req: AuthenticatedRequest, res: Response) 
             hasAccess = true;
         }
 
-        // 1. Admin
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
         if (isAdmin) hasAccess = true;
 
-        // 2. Head of Documentation
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         if (!hasAccess && docCommittee) {
             if (docCommittee.headUserId === userId || docCommittee.coHeadUserId === userId) {
@@ -795,20 +683,14 @@ export const getDocumentById = async (req: AuthenticatedRequest, res: Response) 
             }
         }
 
-        // 3. Head of Owning Committee
         if (!hasAccess) {
             const owningCommittee = docDetails.committee;
             if (owningCommittee.headUserId === userId || owningCommittee.coHeadUserId === userId) {
-                hasAccess = true; // Heads of owning committee always have access
-                // Note: Logic about "Classified" access for Heads is usually for CREATION. Viewing own committee docs should be allowed?
-                // Prompt says: "only to the head of the committee of the whose committee of the document"
+                hasAccess = true; 
             }
         }
 
-        // 4. Shared Permission (Committee Access)
         if (!hasAccess) {
-            // Check if user is Head/CoHead of a committee that has access
-            // We need to fetch user's committees
             const user = await prisma.user.findUnique({
                 where: { id: userId },
                 include: { HeadOfCommittee: true, CoHeadOfCommittee: true }
@@ -818,7 +700,6 @@ export const getDocumentById = async (req: AuthenticatedRequest, res: Response) 
                 const headCommitteeIds = user.HeadOfCommittee.map(c => c.id);
                 const coHeadCommitteeIds = user.CoHeadOfCommittee.map(c => c.id);
 
-                // Check DocumentAccess records
                 for (const access of docDetails.documentAccess) {
                     if (headCommitteeIds.includes(access.committeeId)) {
                         hasAccess = true;
@@ -832,7 +713,6 @@ export const getDocumentById = async (req: AuthenticatedRequest, res: Response) 
             }
         }
 
-        // 5. Shared Permission (User Access)
         if (!hasAccess) {
             const userAccess = docDetails.documentUserAccesses.find(ua => ua.userId === userId);
             if (userAccess) {
@@ -844,7 +724,6 @@ export const getDocumentById = async (req: AuthenticatedRequest, res: Response) 
             return res.status(403).json({ message: 'Forbidden: You do not have permission to view this document.' });
         }
 
-        // Attach creator data
         const latestDoc = docDetails.Documents[0];
         let createdByName = 'Unknown';
         if (latestDoc) {
@@ -903,13 +782,9 @@ export const updateDocumentSettings = async (req: AuthenticatedRequest, res: Res
     }
 };
 
-// --- User Sharing & Access Control ---
 
 export const getEligibleUsersForSharing = async (_req: AuthenticatedRequest, res: Response) => {
     try {
-        // Fetch:
-        // 1. All Committee Heads & Co-Heads
-        // 2. All Documentation Committee Members
 
         const headsAndCoHeads = await prisma.committee.findMany({
             select: { headUser: true, coHeadUser: true, name: true }
@@ -922,7 +797,6 @@ export const getEligibleUsersForSharing = async (_req: AuthenticatedRequest, res
 
         const usersMap = new Map<number, { id: number, name: string, email: string, role: string }>();
 
-        // Add Heads & CoHeads
         headsAndCoHeads.forEach(c => {
             if (c.headUser) {
                 const existing = usersMap.get(c.headUser.id);
@@ -944,7 +818,6 @@ export const getEligibleUsersForSharing = async (_req: AuthenticatedRequest, res
             }
         });
 
-        // Add Doc Members
         docCommittee?.Members.forEach(m => {
             if (m.User) {
                 if (!usersMap.has(m.User.id)) {
@@ -953,7 +826,6 @@ export const getEligibleUsersForSharing = async (_req: AuthenticatedRequest, res
             }
         });
 
-        // Add Users with DOCUMENTATION role
         const docRoleUsers = await prisma.userRole.findMany({
             where: { role: 'DOCUMENTATION' },
             include: { User: true }
@@ -976,35 +848,24 @@ export const getEligibleUsersForSharing = async (_req: AuthenticatedRequest, res
 
 export const shareDocumentWithUsers = async (req: AuthenticatedRequest, res: Response) => {
     try {
-        const { documentId, userIds } = req.body; // userIds is array of numbers
+        const { documentId, userIds } = req.body; 
         const userId = req.user?.id;
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
         const docDetails = await prisma.documentDetails.findUnique({
             where: { id: Number(documentId) },
-            include: { Documents: true } // Check owner
+            include: { Documents: true } 
         });
 
         if (!docDetails) return res.status(404).json({ message: 'Document not found' });
 
-        // Permission Check: Owner or Doc Head
-        // Actually, we should check if they have permissions.
-        // Prompt: "Documents created by Committee Head can be edited by the Committee Head or the DOCUMENTATION role"
-        // "Let each document have a share button... which when clicked shows the list of committee heads... and documentation role users"
 
-        // Who can share? 
-        // Owner (Head) should be able to share.
-        // Doc Head? Probably.
-        // Let's allow Owner, Doc Head, and Admin.
 
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         const isDocHead = docCommittee?.headUserId === userId;
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
 
-        // Is Owner?
-        // We track `generatedById` on `Document`. The `DocumentDetails` doesn't strictly have an "owner".
-        // But usually the creator of the first version is the owner.
         const firstDoc = await prisma.document.findFirst({ where: { docDetailsId: docDetails.id }, orderBy: { version: 'asc' } });
         const isOwner = firstDoc?.generatedById === userId;
 
@@ -1014,8 +875,6 @@ export const shareDocumentWithUsers = async (req: AuthenticatedRequest, res: Res
 
         if (!Array.isArray(userIds)) return res.status(400).json({ message: 'Invalid users list' });
 
-        // Create Access Records
-        // Use CreateMany if supported or loop
         await prisma.documentUserAccess.createMany({
             data: userIds.map((uid: number) => ({
                 documentId: Number(documentId),
@@ -1044,27 +903,10 @@ export const editDocumentDetails = async (req: AuthenticatedRequest, res: Respon
 
         if (!docDetails) return res.status(404).json({ message: 'Document not found' });
 
-        // Permission Check: 
-        // 1. Owner
-        // 2. Documentation Role (Anyone in Doc Team? Prompt says "DOCUMENTATION role")
-        // 3. Shared Committee Head (via Access?) -> "Documents created by Committee Head can be edited by the Committee Head or the DOCUMENTATION role"
-        // 4. "A document title and description can be edited by the DOCUMENTATION role or the shared committee head"
-        // Wait, "shared committee head"? Does that mean someone it was shared TO?
-        // "When a committee head shares a document with documentation role user, the documentation role user can revise the document"
-        // "A document title and description can be edited by the DOCUMENTATION role or the shared committee head"
 
-        // This implies:
-        // - Doc Role users can ALWAYS edit/revise? Or only if shared?
-        // Point 4: "When a comm head shares ... with doc role user, the doc role user can revise" -> Edit Access upon sharing.
-        // Point 5: "Title and description can be edited by the DOCUMENTATION role or the shared committee head" 
-        // "Shared committee head" is ambiguous. It could mean "The head who shared it" (Owner) OR "Head it was shared to".
-        // Context: "Let each document have a share button... to share with list of committee heads".
-        // So likely: Changes can be made by People having Access.
 
-        // Check Access
         const hasDirectAccess = docDetails.documentUserAccesses.some(a => a.userId === userId);
 
-        // Check Doc Role
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         const isDocMember = await prisma.committeeMembership.findFirst({
             where: { userId, committeeId: docCommittee?.id }
@@ -1076,23 +918,9 @@ export const editDocumentDetails = async (req: AuthenticatedRequest, res: Respon
         const isOwner = firstDoc?.generatedById === userId;
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
 
-        // "edited by the DOCUMENTATION role or the shared committee head"
-        // If I am Doc Role, do I need it shared with me?
-        // Point 4 says: "When ... shares ... with doc role, the doc role user can revise".
-        // So sharing IS required for Doc Role to act (unless maybe Head/Admin).
 
-        // Revised Logic:
-        // Allow if:
-        // 1. Owner
-        // 2. Admin
-        // 3. Has UserAccess (Shared)
-        // 4. Is Doc Head (Global Override usually desired)
 
-        if (!isOwner && !hasDirectAccess && !isAdmin && !hasDocRole) { // Allowing DocRole generally or only shared?
-            // Point 4 implies explicit share needed for "revise". 
-            // Logic: If user has 'hasDirectAccess', they can edit.
-            // If user is Owner, they can edit.
-            // If user is Doc Head, they can edit.
+        if (!isOwner && !hasDirectAccess && !isAdmin && !hasDocRole) { 
             return res.status(403).json({ message: 'Forbidden' });
         }
 
@@ -1129,7 +957,6 @@ export const getDocumentUserAccess = async (req: AuthenticatedRequest, res: Resp
 
         if (!docDetails) return res.status(404).json({ message: 'Document not found' });
 
-        // Permission: Owner, Doc Head, Admin
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         const isDocHead = docCommittee?.headUserId === userId;
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
@@ -1167,7 +994,6 @@ export const removeDocumentUserAccess = async (req: AuthenticatedRequest, res: R
 
         if (!docDetails) return res.status(404).json({ message: 'Document not found' });
 
-        // Permission: Owner, Doc Head, Admin
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
         const isDocHead = docCommittee?.headUserId === userId;
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
@@ -1199,7 +1025,6 @@ export const getDocumentByCode = async (req: AuthenticatedRequest, res: Response
         const userId = req.user?.id;
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-        // Search for Document by code
         const document = await prisma.document.findUnique({
             where: { documentCode: code },
             include: {
@@ -1207,7 +1032,7 @@ export const getDocumentByCode = async (req: AuthenticatedRequest, res: Response
                     include: {
                         committee: true,
                         documentAccess: { include: { committee: true } },
-                        documentUserAccesses: { include: { user: true } }, // To see shared users?
+                        documentUserAccesses: { include: { user: true } }, 
                         Documents: {
                             orderBy: { version: 'desc' }
                         }
@@ -1219,18 +1044,9 @@ export const getDocumentByCode = async (req: AuthenticatedRequest, res: Response
 
         if (!document) return res.status(404).json({ message: 'Document not found' });
 
-        // Auth Check
-        // Prompt says: "accessible to Documentation Head and Admin".
-        // Should we restrict it strictly?
-        // "When scanned the document barcode it must popup all the details..." 
-        // implies the user scanning it must have permission.
 
         const docCommittee = await prisma.committee.findUnique({ where: { name: 'DOCUMENTATION' } });
-        const isDocHead = docCommittee?.headUserId === userId; // Head only? Or CoHead too? 
-        // Prompt says "Documentation Head and Admin". 
-        // Usually CoHead has similar rights. Let's include CoHead for now or stick to strict prompt?
-        // Let's stick to strict prompts unless "Documentation Head" implies the Role/Position which might include CoHead.
-        // But let's simplify: Admin and Doc Head.
+        const isDocHead = docCommittee?.headUserId === userId; 
 
         const isAdmin = await prisma.userRole.findFirst({ where: { userId, role: 'ADMIN' } });
 
@@ -1240,7 +1056,6 @@ export const getDocumentByCode = async (req: AuthenticatedRequest, res: Response
 
         const docDetails = document.docDetails;
 
-        // Attach user names for Revisions
         const revisions = await Promise.all(docDetails.Documents.map(async doc => {
             const generator = await prisma.user.findUnique({
                 where: { id: doc.generatedById },
@@ -1252,7 +1067,6 @@ export const getDocumentByCode = async (req: AuthenticatedRequest, res: Response
             };
         }));
 
-        // Construct Response
         const responseData = {
             ...docDetails,
             Documents: revisions,
@@ -1291,7 +1105,6 @@ export const getUserSharedDocuments = async (req: AuthenticatedRequest, res: Res
             orderBy: { createdAt: 'desc' }
         });
 
-        // Attach user info
         const docsWithUser = await Promise.all(docs.map(async d => {
             const latestDoc = d.Documents[0];
             let createdByName = 'Unknown';

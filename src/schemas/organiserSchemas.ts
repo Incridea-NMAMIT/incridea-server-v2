@@ -44,7 +44,7 @@ export const updateQuizSchema = z.object({
   overridePassword: z.string().optional(),
   questions: z.array(
     z.object({
-      id: z.string().optional(), // For existing questions
+      id: z.string().optional(), 
       question: z.string().min(1, 'Question text is required'),
       description: z.string().optional(),
       isCode: z.boolean().default(false),

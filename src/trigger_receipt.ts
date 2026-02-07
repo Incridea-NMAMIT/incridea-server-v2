@@ -6,8 +6,6 @@ async function main() {
     
     const currentDate = new Date(); 
     
-    // Mock Order Data for ACC
-    // Use a random order ID to avoid collision/db constraint (though db update will fail anyway)
     const orderData = {
         orderId: 'order_trigger_test_' + Date.now(),
         type: 'ACC_REGISTRATION', 
@@ -19,7 +17,6 @@ async function main() {
         }
     };
 
-    // Mock User Data
     const userData = {
         name: 'Trigger User No PID',
         email: 'trigger_nopid@example.com',

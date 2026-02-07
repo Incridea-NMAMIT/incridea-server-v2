@@ -8,7 +8,6 @@ export async function requireDocumentation(req: AuthenticatedRequest, res: Respo
             return res.status(401).json({ message: 'Unauthorized' })
         }
 
-        // Check if user has DOCUMENTATION role
         const userRole = await prisma.userRole.findFirst({
             where: {
                 userId: req.user.id,

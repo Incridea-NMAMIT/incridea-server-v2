@@ -50,7 +50,6 @@ router.post('/logout', logout)
 router.get('/google/url', getGoogleUrlHandler)
 router.post('/google/login', validateRequest(z.object({ code: z.string() })), googleLoginHandler)
 router.post('/google/verify-registration', validateRequest(z.object({ code: z.string() })), verifyGoogleRegistrationHandler)
-// router.post('/google/verify-reset', validateRequest(z.object({ code: z.string() })), verifyGooglePasswordResetHandler)
 router.post('/google/verify-reset', validateRequest(verifyGoogleSchema), verifyGooglePasswordResetHandler)
 router.post('/check-email', validateRequest(z.object({ email: z.string().email() })), checkEmailHandler)
 

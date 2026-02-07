@@ -32,7 +32,6 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env)
 
 if (!parsed.success) {
-  // Surface validation issues early during startup
   console.error('❌ Invalid environment configuration:', parsed.error.flatten().fieldErrors)
   throw new Error('Invalid environment variables')
 }

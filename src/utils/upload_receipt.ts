@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 
-// Load environment variables from the root .env file
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const utapi = new UTApi();

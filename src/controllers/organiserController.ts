@@ -2,17 +2,6 @@ import type { NextFunction, Response } from 'express'
 import prisma from '../prisma/client'
 import type { AuthenticatedRequest } from '../middlewares/authMiddleware'
 import type { CreateTeamInput, AddTeamMemberInput, MarkAttendanceInput, CreateQuizInput, UpdateOrganiserProfileInput, UpdateQuizInput } from '../schemas/organiserSchemas'
-// UpdateQuizInput seems missing in schema export based on error, removing it from import for now to check if it fixes build, 
-// or I will add it if I see it in view_file.
-// Wait, I saw it in view_file Step 820: "export type UpdateQuizInput = z.infer<typeof updateQuizSchema>".
-// Maybe I messed up the file content in Step 826?
-// The diff showed:
-// -export type UpdateQuizInput = z.infer<typeof updateQuizSchema>
-// +
-// +export const updateOrganiserProfileSchema ...
-// +export type UpdateOrganiserProfileInput ...
-// Ah! I accidentally REMOVED `export type UpdateQuizInput` in Step 826 because I targeted it as "TargetContent" and replaced it with new schema WITHOUT including it back!
-// I must restore UpdateQuizInput.
 import { logWebEvent } from '../services/logService'
 import { getIO } from '../socket'
 import { getPid } from '../services/registrationService'
@@ -25,7 +14,6 @@ export function ensureAuthUser(req: AuthenticatedRequest, res: Response) {
   return req.user.id
 }
 
-// Helper to verify if user is an organiser for the specific event
 async function ensureOrganiserForEvent(userId: number, eventId: number) {
   const organiser = await prisma.organiser.findUnique({
     where: {
@@ -45,7 +33,6 @@ export async function updateOrganiserProfile(req: AuthenticatedRequest, res: Res
 
     const { name, phoneNumber } = req.body as UpdateOrganiserProfileInput
 
-    // Update all organiser entries for this user
     await prisma.organiser.updateMany({
       where: { userId },
       data: { name, phoneNumber }
@@ -87,7 +74,7 @@ export async function listOrganiserEvents(req: AuthenticatedRequest, res: Respon
         published: true,
         _count: {
           select: {
-            EventParticipants: true, // Updated count
+            EventParticipants: true, 
           },
         },
       },
@@ -101,7 +88,7 @@ export async function listOrganiserEvents(req: AuthenticatedRequest, res: Respon
         ...e,
         venue: e.Schedule[0]?.Venue ?? null,
         schedules: e.Schedule,
-        registrations: e._count.EventParticipants // Expose as registrations
+        registrations: e._count.EventParticipants 
       }))
     })
   } catch (error) {
@@ -138,7 +125,6 @@ export async function getOrganiserEventDetails(req: AuthenticatedRequest, res: R
             }
           }
         },
-        // Include EventParticipants to support both structures
         EventParticipants: {
           include: {
             Team: {
@@ -164,7 +150,7 @@ export async function getOrganiserEventDetails(req: AuthenticatedRequest, res: R
                 Leader: { include: { User: true } }
               }
             },
-            PID: { // For Solo
+            PID: { 
               include: {
                 User: {
                   select: {
@@ -209,10 +195,6 @@ export async function getOrganiserEventDetails(req: AuthenticatedRequest, res: R
       return res.status(404).json({ message: 'Event not found' })
     }
 
-    // Transform eventParticipants to a "Teams-like" structure for frontend compatibility if needed,
-    // or return both.
-    // The current frontend uses `event.Teams`.
-    // We can map `eventParticipants` to `Teams`.
     const mappedTeams = event.EventParticipants.map(ep => {
       if (ep.Team) {
         return {
@@ -223,11 +205,8 @@ export async function getOrganiserEventDetails(req: AuthenticatedRequest, res: R
           eventParticipantId: ep.id
         }
       } else if (ep.PID) {
-        // Create a virtual team for Solo
         return {
-          id: ep.id, // Use EP ID as ID for solo? Or generic ID.
-          // CAUTION: If frontend expects `Team.id` to match `Team` table, using EP ID might confuse if we mix.
-          // But for Solo, there is no Team table entry.
+          id: ep.id, 
           name: ep.PID.User.name,
           roundNo: ep.roundNo,
           confirmed: ep.confirmed,
@@ -235,13 +214,13 @@ export async function getOrganiserEventDetails(req: AuthenticatedRequest, res: R
           eventId: event.id,
           leaderId: ep.PID.id,
           TeamMembers: [{
-            id: 0, // Virtual ID
+            id: 0, 
             teamId: 0,
             pidId: ep.PID.id,
             PID: ep.PID
           }],
           eventParticipantId: ep.id,
-          isSolo: true // Flag to help frontend
+          isSolo: true 
         }
       }
       return null
@@ -252,7 +231,7 @@ export async function getOrganiserEventDetails(req: AuthenticatedRequest, res: R
         ...event,
         venue: event.Schedule[0]?.Venue ?? null,
         schedules: event.Schedule,
-        Teams: mappedTeams // Overwrite with mapped list
+        Teams: mappedTeams 
       }
     })
   } catch (error) {
@@ -277,7 +256,6 @@ export async function createTeam(req: AuthenticatedRequest, res: Response, next:
       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
-    // Check if team name exists
     const existingTeam = await prisma.team.findUnique({
       where: {
         name_eventId: {
@@ -288,13 +266,11 @@ export async function createTeam(req: AuthenticatedRequest, res: Response, next:
     })
     if (existingTeam) return res.status(400).json({ message: 'Team name already exists' })
 
-    // Create Team and EventParticipant
     const result = await prisma.$transaction(async (tx) => {
       const team = await tx.team.create({
         data: {
           name: payload.name,
           eventId,
-          // confirmed: true, // Removed from Team model
         },
         include: {
           TeamMembers: {
@@ -313,7 +289,7 @@ export async function createTeam(req: AuthenticatedRequest, res: Response, next:
         data: {
           eventId,
           teamId: team.id,
-          confirmed: true, // Organisers create confirmed teams
+          confirmed: true, 
           roundNo: 1
         }
       })
@@ -331,12 +307,6 @@ export async function createTeam(req: AuthenticatedRequest, res: Response, next:
   }
 }
 
-// deleteTeam... (No change needed as it uses Team ID from params and cascades)
-// But wait, if deleteTeam is called for Solo (mapped ID), it fails.
-// Organiser typically manages Teams.
-// If we listed Solo participants as "Teams", we should handle their deletion too.
-// The `deleteTeam` function in `organiserController` takes `teamId`.
-// I should update it to support EventParticipant deletion similar to registrationService.
 
 export async function deleteTeam(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
@@ -346,14 +316,12 @@ export async function deleteTeam(req: AuthenticatedRequest, res: Response, next:
     const teamId = Number(req.params.teamId)
     if (!Number.isFinite(teamId)) return res.status(400).json({ message: 'Invalid team id' })
 
-    // Check if it's a Team
     const team = await prisma.team.findUnique({ where: { id: teamId } })
 
     let eventId = team?.eventId;
     let isTeam = !!team;
 
     if (!team) {
-      // Check if it's an EventParticipant (Solo)
       const participant = await prisma.eventParticipant.findUnique({ where: { id: teamId } })
       if (participant) {
         eventId = participant.eventId;
@@ -394,10 +362,6 @@ export async function addTeamMember(req: AuthenticatedRequest, res: Response, ne
     const teamId = Number(req.params.teamId)
     const { userId: memberUserId } = req.body as AddTeamMemberInput
 
-    // Verify organiser logic omitted for brevity? No, must ensure organiser.
-    // But wait, existing code assumes ensureOrganiserForEvent checked?
-    // Route uses `requireOrganiser` middleware but that checks EVENT.
-    // We have teamId. We need to find eventId from teamId to check auth.
 
     const team = await prisma.team.findUnique({
       where: { id: teamId },
@@ -408,18 +372,15 @@ export async function addTeamMember(req: AuthenticatedRequest, res: Response, ne
 
     const isOrganiser = await ensureOrganiserForEvent(userId, team.eventId)
     if (!isOrganiser) {
-      // Admin check?
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
       const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
-    // Check if user already in team
     if (team.TeamMembers.some(tm => tm.userId === memberUserId)) {
       return res.status(400).json({ message: 'User already in team' })
     }
 
-    // Check Team Limit
     const event = await prisma.event.findUnique({ where: { id: team.eventId } })
     if (event && team.TeamMembers.length >= event.maxTeamSize) {
       return res.status(400).json({ message: 'Team is full' })
@@ -476,18 +437,15 @@ export async function markAttendance(req: AuthenticatedRequest, res: Response, n
     const userId = ensureAuthUser(req, res)
     if (!userId) return
 
-    const teamId = Number(req.params.teamId) // This matches frontend calling /team/:teamId/attendance
+    const teamId = Number(req.params.teamId) 
     if (!Number.isFinite(teamId)) return res.status(400).json({ message: 'Invalid team id' })
 
     const { attended } = req.body as MarkAttendanceInput
 
-    // Find EventParticipant. It could be linked to a Team (teamId check) OR be a direct EventParticipant (if teamId passed is EP ID for solo)
-    // Scenario 1: teamId is actual Team ID.
     let participant = await prisma.eventParticipant.findFirst({
       where: { teamId }
     })
 
-    // Scenario 2: teamId is EventParticipant ID (Solo)
     if (!participant) {
       participant = await prisma.eventParticipant.findUnique({ where: { id: teamId } })
     }
@@ -534,7 +492,6 @@ export async function createRound(req: AuthenticatedRequest, res: Response, next
       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
-    // Determine next round number
     const lastRound = await prisma.round.findFirst({
       where: { eventId },
       orderBy: { roundNo: 'desc' }
@@ -545,7 +502,7 @@ export async function createRound(req: AuthenticatedRequest, res: Response, next
       data: {
         eventId,
         roundNo: nextRoundNo,
-        date: new Date() // Default to now, expecting update later
+        date: new Date() 
       }
     })
 
@@ -615,11 +572,9 @@ export async function addJudge(req: AuthenticatedRequest, res: Response, next: N
       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
-    // Ensure user exists
     const judgeUser = await prisma.user.findUnique({ where: { id: judgeUserId } })
     if (!judgeUser) return res.status(404).json({ message: 'User not found' })
 
-    // Check if already judge
     const existingJudge = await prisma.judge.findUnique({
       where: {
         userId_eventId_roundNo: {
@@ -752,7 +707,6 @@ export async function deleteCriteria(req: AuthenticatedRequest, res: Response, n
     return next(error)
   }
 }
-// ... existing code ...
 
 export async function createQuiz(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   try {
@@ -770,7 +724,6 @@ export async function createQuiz(req: AuthenticatedRequest, res: Response, next:
 
     const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
     if (!isOrganiser) {
-      // Allow Admins?
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
       const isAdmin = user?.UserRoles.some((ur) => ur.role === 'ADMIN')
       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
@@ -796,7 +749,6 @@ export async function createQuiz(req: AuthenticatedRequest, res: Response, next:
         quizId: quiz.id
       })
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error('Socket notification failed', error)
     }
 
@@ -818,7 +770,6 @@ export async function getQuiz(req: AuthenticatedRequest, res: Response, next: Ne
       return res.status(400).json({ message: 'Invalid ID' })
     }
 
-    // Auth check
     const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
     if (!isOrganiser) {
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
@@ -861,7 +812,6 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
     if (!userId) return
 
     const eventId = Number(req.params.eventId)
-    // const roundId = Number(req.params.roundId)
     const quizId = req.params.quizId
 
     if (!Number.isFinite(eventId) || !quizId) {
@@ -878,9 +828,7 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
-    // Transaction to handle nested updates safely
     const updatedQuiz = await prisma.$transaction(async (tx) => {
-      // 1. Update basic quiz details
       const quiz = await tx.quiz.update({
         where: { id: quizId },
         data: {
@@ -893,8 +841,6 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
         },
       })
 
-      // 2. Handle Questions
-      // Fetch existing question IDs with a single query to avoid repeated scans
       const existingQuestions = await tx.question.findMany({
         where: { quizId },
         select: { id: true },
@@ -903,7 +849,6 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
 
       const incomingQuestionIds = new Set(questions.filter((q) => q.id).map((q) => q.id as string))
 
-      // Delete questions that are not in the incoming list
       const questionsToDelete = [...existingQuestionIds].filter((id) => !incomingQuestionIds.has(id))
       if (questionsToDelete.length > 0) {
         await tx.question.deleteMany({
@@ -911,10 +856,8 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
         })
       }
 
-      // Upsert questions (update existing or create new)
       for (const q of questions) {
         if (q.id && existingQuestionIds.has(q.id)) {
-          // Update existing question
           await tx.question.update({
             where: { id: q.id },
             data: {
@@ -925,10 +868,7 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
             },
           })
 
-          // Handle Options for this question
-          // Delete old options
           await tx.options.deleteMany({ where: { questionId: q.id } })
-          // Create new options
           if (q.options.length > 0) {
             await tx.options.createMany({
               data: q.options.map(opt => ({
@@ -940,7 +880,6 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
           }
 
         } else {
-          // Create new question
           await tx.question.create({
             data: {
               quizId,
@@ -968,7 +907,6 @@ export async function updateQuiz(req: AuthenticatedRequest, res: Response, next:
         quizId
       })
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error('Socket notification failed', error)
     }
 
@@ -986,7 +924,6 @@ export async function deleteQuiz(req: AuthenticatedRequest, res: Response, next:
     const eventId = Number(req.params.eventId)
     const quizId = req.params.quizId
 
-    // Auth check
     const isOrganiser = await ensureOrganiserForEvent(userId, eventId)
     if (!isOrganiser) {
       const user = await prisma.user.findUnique({ where: { id: userId }, include: { UserRoles: true } })
@@ -1004,7 +941,6 @@ export async function deleteQuiz(req: AuthenticatedRequest, res: Response, next:
         quizId
       })
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.error('Socket notification failed', error)
     }
 
@@ -1059,7 +995,7 @@ export async function promoteParticipants(req: AuthenticatedRequest, res: Respon
     if (!userId) return
 
     const eventId = Number(req.params.eventId)
-    const roundId = Number(req.params.roundId) // This is current round number
+    const roundId = Number(req.params.roundId) 
     if (!Number.isFinite(eventId) || !Number.isFinite(roundId)) return res.status(400).json({ message: 'Invalid ID' })
 
     const { teamIds } = req.body as { teamIds: number[] }
@@ -1071,22 +1007,15 @@ export async function promoteParticipants(req: AuthenticatedRequest, res: Respon
       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
-    // Promote teams to next round logic
-    // Standard logic: Update `roundNo` of Team? Or create new round entry?
-    // In `Team` model: `roundNo` field.
-    // Logic: Update `roundNo` to current round + 1.
 
     const nextRoundNo = roundId + 1
 
-    // Verify next round exists?
-    // Usually we just increment.
 
-    // Update EventParticipants (since teamIds are actually eventParticipantIds)
     await prisma.eventParticipant.updateMany({
       where: {
         id: { in: teamIds },
         eventId,
-        roundNo: roundId // Ensure they are in current round
+        roundNo: roundId 
       },
       data: {
         roundNo: nextRoundNo
@@ -1123,7 +1052,6 @@ export async function toggleEventStart(req: AuthenticatedRequest, res: Response,
     })
 
     if (isStarted) {
-      // Reset all rounds to not completed
       await prisma.round.updateMany({
         where: { eventId },
         data: { isCompleted: false }
@@ -1158,7 +1086,6 @@ export async function setActiveRound(req: AuthenticatedRequest, res: Response, n
       if (!isAdmin) return res.status(403).json({ message: 'Forbidden' })
     }
 
-    // Mark previous completed
     await prisma.round.updateMany({
       where: {
         eventId,
@@ -1167,7 +1094,6 @@ export async function setActiveRound(req: AuthenticatedRequest, res: Response, n
       data: { isCompleted: true }
     })
 
-    // Mark current and future incomplete
     await prisma.round.updateMany({
       where: {
         eventId,

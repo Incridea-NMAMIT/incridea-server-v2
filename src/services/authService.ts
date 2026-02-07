@@ -54,23 +54,7 @@ async function ensureNmamitCollege() {
   })
 }
 
-// async function ensureHoldingHotel() {
-//   return prisma.hotel.upsert({
-//     where: { name: 'UNASSIGNED' },
-//     update: {},
-//     create: {
-//       name: 'UNASSIGNED',
-//       details: 'Pending accommodation allocation',
-//       price: 0,
-//     },
-//   })
-// }
 
-// function parseDateOrNull(value?: string | null) {
-//   if (!value) return null
-//   const parsed = new Date(value)
-//   return Number.isNaN(parsed.getTime()) ? null : parsed
-// }
 
 function generateOtpBundle() {
   const otpCode = Math.floor(100000 + Math.random() * 900000).toString()
@@ -141,13 +125,11 @@ export async function createUserWithProfile(payload: SignupInput) {
   }
 
   if (payload.verificationToken) {
-    // Verify the token
     try {
         const decoded = jwt.verify(payload.verificationToken, env.jwtSecret) as jwt.JwtPayload
         if (decoded.purpose !== 'google-verification' || decoded.email !== email) {
             throw new AppError('Invalid verification token', 400)
         }
-        // Skip OTP
         data.isVerified = true
     } catch (e) {
         throw new AppError('Invalid or expired verification token', 400)
@@ -177,7 +159,6 @@ export async function createUserWithProfile(payload: SignupInput) {
   }
 
   if (payload.accommodation) {
-    // Accommodation logic commented out in original
   }
 
   if (!data.isVerified) {
@@ -468,7 +449,6 @@ export async function requestPasswordReset(payload: ResetPasswordRequestInput) {
     throw new AppError('User not found', 404)
   }
 
-  // Create a verification token record
   const verificationToken = await prisma.verificationToken.create({
     data: {
       userId: user.id,
@@ -476,8 +456,6 @@ export async function requestPasswordReset(payload: ResetPasswordRequestInput) {
     },
   })
 
-  // Sign the token ID into the JWT. 
-  // We set JWT expiry to slightly longer than the business logic expiry (30m) to be safe, e.g., 40m.
   const resetToken = jwt.sign(
     { sub: verificationToken.id, purpose: 'password-reset' },
     env.jwtSecret,
@@ -619,7 +597,7 @@ function validateGoogleParams() {
 
 export function getGoogleUrl(email?: string) {
     const { clientId, redirectUri } = validateGoogleParams()
-    const rootUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
+    const rootUrl = 'https:
     const options: Record<string, string> = {
         redirect_uri: redirectUri,
         client_id: clientId,
@@ -673,7 +651,7 @@ async function getGoogleTokens(code: string) {
 
 async function getGoogleUser(id_token: string, access_token: string) {
     try {
-        const res = await fetch(`https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=${access_token}`, {
+        const res = await fetch(`https:
             headers: {
                 Authorization: `Bearer ${id_token}`,
             },
@@ -711,12 +689,6 @@ export async function verifyGoogleLogin(code: string) {
     })
 
     if (!user) {
-        // User not found, return info to redirect to registration
-        // But the requirement says "prefil the email id in the login page of the google" - ambiguous.
-        // Actually, if login fails, we ideally want to tell the frontend "Email not found, please register"
-        // But for "Sign in with Google", if they don't exist, we can't login.
-        // Let's throw a specific error or return a status? 
-        // For now, standard behavior: throw 404 or specific message.
         throw new AppError('User not found. Please register first.', 404)
     }
 
@@ -731,7 +703,6 @@ export async function verifyGoogleRegistration(code: string) {
         throw new AppError('Google email not verified', 400)
     }
 
-    // Check if user already exists
     const existing = await prisma.user.findUnique({
         where: { email: googleUser.email.toLowerCase() },
     })
@@ -740,7 +711,6 @@ export async function verifyGoogleRegistration(code: string) {
          throw new AppError('User already exists. Please login.', 409)
     }
 
-    // Sign a verification token
     const verificationToken = jwt.sign(
         { email: googleUser.email.toLowerCase(), purpose: 'google-verification' },
         env.jwtSecret,
@@ -770,7 +740,6 @@ export async function verifyGooglePasswordReset(code: string) {
          throw new AppError('User not found', 404)
     }
 
-    // Create a verification token record
     const verificationToken = await prisma.verificationToken.create({
         data: {
           userId: user.id,
@@ -778,8 +747,6 @@ export async function verifyGooglePasswordReset(code: string) {
         },
       })
     
-     // Sign the token ID into the JWT. 
-     // We set JWT expiry to slightly longer than the business logic expiry (30m) to be safe, e.g., 40m.
      const resetToken = jwt.sign(
         { sub: verificationToken.id, purpose: 'password-reset' },
         env.jwtSecret,

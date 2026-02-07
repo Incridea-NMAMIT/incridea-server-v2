@@ -1,12 +1,8 @@
 import nodemailer from 'nodemailer'
 import { env } from './env'
 
-// Create a pool of transporters or just create one on the fly.
-// Since we want to rotate randomly per email, creating on the fly is safer/easier to ensure rotation 
-// unless we want to keep 5 open connections (which might be overkill or timed out).
 
 export async function sendEmail(to: string, subject: string, text: string, html?: string, attachments?: any[]) {
-  // Select a random account
   const account = env.smtp.accounts[Math.floor(Math.random() * env.smtp.accounts.length)]
   
   const transporter = nodemailer.createTransport({
@@ -19,7 +15,6 @@ export async function sendEmail(to: string, subject: string, text: string, html?
     },
   })
 
-  // For debugging/verification
   console.log(`Sending email using SMTP account: ${account.user}`)
 
   try {

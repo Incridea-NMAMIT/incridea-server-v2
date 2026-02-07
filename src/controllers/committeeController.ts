@@ -29,7 +29,6 @@ async function ensureUserFreeForCommittee(userId: number, allowedCommitteeId?: n
     throw new AppError('User is already part of another committee', 400)
   }
 
-  // ALLOW USER TO BE HEAD OF MULTIPLE COMMITTEES - Checks removed
 }
 
 export async function getCommitteeState(req: AuthenticatedRequest, res: Response, next: NextFunction) {
@@ -81,7 +80,6 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
     let membershipStatus: CommitteeMembershipStatus | null = null
 
     if (managedCommittees.length > 0) {
-      // Prioritize HEAD role for the unified 'my' object, though UI should use managedCommittees
       const primary = managedCommittees[0]
       myRole = primary.role
       myCommittee = { id: primary.id, name: primary.name }
@@ -92,7 +90,6 @@ export async function getCommitteeState(req: AuthenticatedRequest, res: Response
       membershipStatus = membership.status
     }
 
-    // Fetch members for ALL managed committees
     const managedCommitteeIds = managedCommittees.map((c) => c.id)
 
     let pendingApplicants: Array<{
@@ -203,7 +200,6 @@ export async function applyToCommittee(req: AuthenticatedRequest, res: Response,
       return res.status(403).json({ message: 'Committee registrations are closed' })
     }
 
-    // Fetch current user name if we need to compare/update
     if (payload.name) {
       const currentUser = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } })
       if (currentUser && currentUser.name !== payload.name) {
@@ -512,7 +508,6 @@ export async function getCommitteeMembers(req: AuthenticatedRequest, res: Respon
       return res.status(400).json({ message: 'Committee ID is required' })
     }
 
-    // Check for DOCUMENTATION role
     const roles = await getUserRoles(req.user.id)
     const isDocumentation = roles.includes('DOCUMENTATION')
     const isAdmin = roles.includes('ADMIN')

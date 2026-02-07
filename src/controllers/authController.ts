@@ -57,7 +57,7 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
     const token = generateTokenWithSession(user.id, session.id)
 
     const isProduction = process.env.NODE_ENV === 'production'
-    const domain = process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined) // undefined for localhost to let browser handle it
+    const domain = process.env.COOKIE_DOMAIN || (isProduction ? '.incridea.in' : undefined) 
 
     res.cookie('token', token, {
       httpOnly: true,
@@ -65,12 +65,11 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
       sameSite: 'none',
       domain: domain,
       path: '/',
-      maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
+      maxAge: 365 * 24 * 60 * 60 * 1000 
     })
 
     return res.status(201).json({
       message: 'User saved. Please verify your email with the OTP sent.',
-      // token, // Token is now in cookie only
 
       user: {
         id: user.id,
@@ -104,7 +103,6 @@ export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body as LoginInput
     const user = await authenticateUser(email, password)
-    // Removed verification check to allow unverified login (frontend handles redirect)
 
     const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
     const session = await prisma.session.create({
@@ -137,12 +135,11 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       sameSite: 'none',
       domain: domain,
       path: '/',
-      maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
+      maxAge: 365 * 24 * 60 * 60 * 1000 
     })
 
     return res.status(200).json({
       message: 'Logged in',
-      // token, // Token is now in cookie only
       user: {
         id: user.id,
         name: user.name,
@@ -205,12 +202,11 @@ export async function verifyOtp(req: Request, res: Response, next: NextFunction)
       sameSite: 'none',
       domain: domain,
       path: '/',
-      maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
+      maxAge: 365 * 24 * 60 * 60 * 1000 
     })
 
     return res.status(200).json({
       message: 'Email verified successfully',
-      // token, // Token is now in cookie only
       user: {
         id: user.id,
         name: user.name,
@@ -353,7 +349,6 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
   try {
     const io = getIO()
 
-    // Attempt to extract userId from token to emit meaningful logout event
     const token = req.cookies?.token
     if (token) {
       try {
@@ -369,7 +364,6 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
         }
       } catch (err) {
         console.error('Logout: Failed to verify token for event emission', err)
-        // Continue to clear cookie regardless
       }
     }
 
@@ -452,12 +446,11 @@ export async function googleLoginHandler(req: Request, res: Response, next: Next
       sameSite: 'none',
       domain: domain,
       path: '/',
-      maxAge: 365 * 24 * 60 * 60 * 1000 // 1 year
+      maxAge: 365 * 24 * 60 * 60 * 1000 
     })
 
     return res.status(200).json({
       message: 'Logged in',
-      // token, // Token is now in cookie only
       user: {
         id: user.id,
         name: user.name,

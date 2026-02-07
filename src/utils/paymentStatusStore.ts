@@ -1,6 +1,4 @@
 
-// Simple in-memory store for payment processing steps
-// Key: Order ID, Value: Current Processing Step
 const paymentStatusMap = new Map<string, string>();
 
 export const setPaymentStep = (orderId: string, step: string) => {
