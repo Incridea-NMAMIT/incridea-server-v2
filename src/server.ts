@@ -13,7 +13,7 @@ const port = Number(env.port)
 async function start() {
   try {
     await prisma.$connect()
-    
+
 
 
 
@@ -32,9 +32,9 @@ async function start() {
       }
 
       console.log(`API server listening on port ${port}`)
-      console.log(`➜  Local:   http:
+      console.log(`➜  Local:   http://localhost:${port}`)
       for (const address of addresses) {
-        console.log(`➜  Network: http:
+        console.log(`➜  Network: http://${address}:${port}`)
       }
     })
   } catch (error) {

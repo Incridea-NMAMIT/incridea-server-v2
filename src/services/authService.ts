@@ -32,14 +32,14 @@ export function generateToken(userId: number): string {
 }
 
 export function generateTokenWithSession(userId: number, sessionId: string): string {
-    const secret: jwt.Secret = env.jwtSecret
-    const payload: jwt.JwtPayload = { sub: String(userId), sessionId }
-    const options: jwt.SignOptions = {
-      expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'],
-    }
-  
-    return jwt.sign(payload, secret, options)
+  const secret: jwt.Secret = env.jwtSecret
+  const payload: jwt.JwtPayload = { sub: String(userId), sessionId }
+  const options: jwt.SignOptions = {
+    expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'],
   }
+
+  return jwt.sign(payload, secret, options)
+}
 
 async function ensureNmamitCollege() {
   await prisma.college.upsert({
@@ -126,22 +126,22 @@ export async function createUserWithProfile(payload: SignupInput) {
 
   if (payload.verificationToken) {
     try {
-        const decoded = jwt.verify(payload.verificationToken, env.jwtSecret) as jwt.JwtPayload
-        if (decoded.purpose !== 'google-verification' || decoded.email !== email) {
-            throw new AppError('Invalid verification token', 400)
-        }
-        data.isVerified = true
+      const decoded = jwt.verify(payload.verificationToken, env.jwtSecret) as jwt.JwtPayload
+      if (decoded.purpose !== 'google-verification' || decoded.email !== email) {
+        throw new AppError('Invalid verification token', 400)
+      }
+      data.isVerified = true
     } catch (e) {
-        throw new AppError('Invalid or expired verification token', 400)
+      throw new AppError('Invalid or expired verification token', 400)
     }
   }
 
   const user = await prisma.user.create({
-        data: {
-          ...data,
-          UserRoles: { create: [{ role: Role.USER }] },
-        },
-      })
+    data: {
+      ...data,
+      UserRoles: { create: [{ role: Role.USER }] },
+    },
+  })
 
   if (payload.selection === 'ALUMNI') {
     await prisma.alumni.upsert({
@@ -162,7 +162,7 @@ export async function createUserWithProfile(payload: SignupInput) {
   }
 
   if (!data.isVerified) {
-      const emailHtml = getUtilityEmailHtml(`
+    const emailHtml = getUtilityEmailHtml(`
         <div style="text-align: center;">
           <h1 style="color: #ffffff; font-size: 24px; margin-bottom: 16px;">Welcome to Incridea! </h1>
           <p style="color: #cbd5e1; margin-bottom: 24px; font-size: 16px;">
@@ -177,13 +177,13 @@ export async function createUserWithProfile(payload: SignupInput) {
           </p>
         </div>
       `)
-    
-      await sendEmail(
-        user.email,
-        'Verify your email ',
-        `Your verification code is ${otpCode}. It expires in 10 minutes.`,
-        emailHtml,
-      )
+
+    await sendEmail(
+      user.email,
+      'Verify your email ',
+      `Your verification code is ${otpCode}. It expires in 10 minutes.`,
+      emailHtml,
+    )
   }
 
   return prisma.user.findUnique({
@@ -527,7 +527,7 @@ export async function resetPasswordWithToken(payload: ResetPasswordConfirmInput)
 
   const user = dbToken.User
   const newHash = await hashPassword(payload.newPassword)
-  
+
   await prisma.$transaction([
     prisma.user.update({ where: { id: user.id }, data: { password: newHash } }),
     prisma.verificationToken.update({ where: { id: tokenId }, data: { revoked: true } }),
@@ -586,187 +586,187 @@ export async function getUserCommitteeSnapshot(userId: number): Promise<{
 // Google Auth Helpers
 function validateGoogleParams() {
   if (!env.google.clientId || !env.google.clientSecret || !env.google.redirectUri) {
-      throw new AppError('Google Auth not configured', 500)
+    throw new AppError('Google Auth not configured', 500)
   }
   return {
-      clientId: env.google.clientId,
-      clientSecret: env.google.clientSecret,
-      redirectUri: env.google.redirectUri
+    clientId: env.google.clientId,
+    clientSecret: env.google.clientSecret,
+    redirectUri: env.google.redirectUri
   }
 }
 
 export function getGoogleUrl(email?: string) {
-    const { clientId, redirectUri } = validateGoogleParams()
-    const rootUrl = 'https:
-    const options: Record<string, string> = {
-        redirect_uri: redirectUri,
-        client_id: clientId,
-        access_type: 'offline',
-        response_type: 'code',
-        prompt: 'consent',
-        scope: [
-            'https://www.googleapis.com/auth/userinfo.profile',
-            'https://www.googleapis.com/auth/userinfo.email',
-        ].join(' '),
-    }
+  const { clientId, redirectUri } = validateGoogleParams()
+  const rootUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
+  const options: Record<string, string> = {
+    redirect_uri: redirectUri,
+    client_id: clientId,
+    access_type: 'offline',
+    response_type: 'code',
+    prompt: 'consent',
+    scope: [
+      'https://www.googleapis.com/auth/userinfo.profile',
+      'https://www.googleapis.com/auth/userinfo.email',
+    ].join(' '),
+  }
 
-    if (email) {
-        options.login_hint = email
-    }
+  if (email) {
+    options.login_hint = email
+  }
 
-    const qs = new URLSearchParams(options)
-    return `${rootUrl}?${qs.toString()}`
+  const qs = new URLSearchParams(options)
+  return `${rootUrl}?${qs.toString()}`
 }
 
 async function getGoogleTokens(code: string) {
-    const { clientId, clientSecret, redirectUri } = validateGoogleParams()
-    const url = 'https://oauth2.googleapis.com/token'
-    const values = {
-        code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code'
+  const { clientId, clientSecret, redirectUri } = validateGoogleParams()
+  const url = 'https://oauth2.googleapis.com/token'
+  const values = {
+    code,
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code'
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(values).toString()
+    })
+
+    if (!res.ok) {
+      const error = await res.text()
+      console.error('Google Token Error:', error)
     }
 
-    try {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams(values).toString()
-        })
-        
-        if (!res.ok) {
-             const error = await res.text()
-             console.error('Google Token Error:', error)
-        }
-        
-        const data = await res.json() as { access_token: string; id_token: string }
-        return data
-    } catch (error) {
-        console.error('Google Token Exchange Failed:', error)
-        throw new AppError('Google Token Exchange', 400)
-    }
+    const data = await res.json() as { access_token: string; id_token: string }
+    return data
+  } catch (error) {
+    console.error('Google Token Exchange Failed:', error)
+    throw new AppError('Google Token Exchange', 400)
+  }
 }
 
-async function getGoogleUser(id_token: string, access_token: string) {
-    try {
-        const res = await fetch(`https:
-            headers: {
-                Authorization: `Bearer ${id_token}`,
-            },
-        })
-        if (!res.ok) {
-            throw new Error('Failed to fetch Google user')
-        }
-        const data = await res.json() as { id: string; email: string; verified_email: boolean; name: string; picture: string }
-        return data
-    } catch (error) {
-        throw new AppError('Failed to fetch Google profile', 400)
+async function getGoogleUser(_id_token: string, access_token: string) {
+  try {
+    const res = await fetch(`https://www.googleapis.com/oauth2/v2/userinfo`, {
+      headers: {
+        Authorization: `Bearer ${access_token}`,
+      },
+    })
+    if (!res.ok) {
+      throw new Error('Failed to fetch Google user')
     }
+    const data = await res.json() as { id: string; email: string; verified_email: boolean; name: string; picture: string }
+    return data
+  } catch (error) {
+    throw new AppError('Failed to fetch Google profile', 400)
+  }
 }
 
 export async function verifyGoogleLogin(code: string) {
-    const { id_token, access_token } = await getGoogleTokens(code)
-    const googleUser = await getGoogleUser(id_token, access_token)
+  const { id_token, access_token } = await getGoogleTokens(code)
+  const googleUser = await getGoogleUser(id_token, access_token)
 
-    if (!googleUser.verified_email) {
-        throw new AppError('Google email not verified', 400)
-    }
+  if (!googleUser.verified_email) {
+    throw new AppError('Google email not verified', 400)
+  }
 
-    const user = await prisma.user.findUnique({
-        where: { email: googleUser.email.toLowerCase() },
-        include: {
-            Alumni: true,
-            UserRoles: true,
-            BranchRep: true,
-            Organisers: true,
-            Judges: true,
-            PID: true,
-            HeadOfCommittee: true,
-            College: true,
-        },
-    })
+  const user = await prisma.user.findUnique({
+    where: { email: googleUser.email.toLowerCase() },
+    include: {
+      Alumni: true,
+      UserRoles: true,
+      BranchRep: true,
+      Organisers: true,
+      Judges: true,
+      PID: true,
+      HeadOfCommittee: true,
+      College: true,
+    },
+  })
 
-    if (!user) {
-        throw new AppError('User not found. Please register first.', 404)
-    }
+  if (!user) {
+    throw new AppError('User not found. Please register first.', 404)
+  }
 
-    return user
+  return user
 }
 
 export async function verifyGoogleRegistration(code: string) {
-    const { id_token, access_token } = await getGoogleTokens(code)
-    const googleUser = await getGoogleUser(id_token, access_token)
+  const { id_token, access_token } = await getGoogleTokens(code)
+  const googleUser = await getGoogleUser(id_token, access_token)
 
-    if (!googleUser.verified_email) {
-        throw new AppError('Google email not verified', 400)
-    }
+  if (!googleUser.verified_email) {
+    throw new AppError('Google email not verified', 400)
+  }
 
-    const existing = await prisma.user.findUnique({
-        where: { email: googleUser.email.toLowerCase() },
-    })
+  const existing = await prisma.user.findUnique({
+    where: { email: googleUser.email.toLowerCase() },
+  })
 
-    if (existing) {
-         throw new AppError('User already exists. Please login.', 409)
-    }
+  if (existing) {
+    throw new AppError('User already exists. Please login.', 409)
+  }
 
-    const verificationToken = jwt.sign(
-        { email: googleUser.email.toLowerCase(), purpose: 'google-verification' },
-        env.jwtSecret,
-        { expiresIn: '1h' }
-    )
+  const verificationToken = jwt.sign(
+    { email: googleUser.email.toLowerCase(), purpose: 'google-verification' },
+    env.jwtSecret,
+    { expiresIn: '1h' }
+  )
 
-    return {
-        email: googleUser.email.toLowerCase(),
-        name: googleUser.name,
-        verificationToken
-    }
+  return {
+    email: googleUser.email.toLowerCase(),
+    name: googleUser.name,
+    verificationToken
+  }
 }
 
 export async function verifyGooglePasswordReset(code: string) {
-    const { id_token, access_token } = await getGoogleTokens(code)
-    const googleUser = await getGoogleUser(id_token, access_token)
+  const { id_token, access_token } = await getGoogleTokens(code)
+  const googleUser = await getGoogleUser(id_token, access_token)
 
-    if (!googleUser.verified_email) {
-        throw new AppError('Google email not verified', 400)
-    }
+  if (!googleUser.verified_email) {
+    throw new AppError('Google email not verified', 400)
+  }
 
-    const user = await prisma.user.findUnique({
-        where: { email: googleUser.email.toLowerCase() },
-    })
+  const user = await prisma.user.findUnique({
+    where: { email: googleUser.email.toLowerCase() },
+  })
 
-    if (!user) {
-         throw new AppError('User not found', 404)
-    }
+  if (!user) {
+    throw new AppError('User not found', 404)
+  }
 
-    const verificationToken = await prisma.verificationToken.create({
-        data: {
-          userId: user.id,
-          type: 'RESET_PASSWORD',
-        },
-      })
-    
-     const resetToken = jwt.sign(
-        { sub: verificationToken.id, purpose: 'password-reset' },
-        env.jwtSecret,
-        { expiresIn: '40m' }
-      )
-    
-     return { 
-        resetToken,
-        email: user.email,
-        name: user.name
-     }
+  const verificationToken = await prisma.verificationToken.create({
+    data: {
+      userId: user.id,
+      type: 'RESET_PASSWORD',
+    },
+  })
+
+  const resetToken = jwt.sign(
+    { sub: verificationToken.id, purpose: 'password-reset' },
+    env.jwtSecret,
+    { expiresIn: '40m' }
+  )
+
+  return {
+    resetToken,
+    email: user.email,
+    name: user.name
+  }
 }
 
 export async function checkEmail(email: string) {
-    const user = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() },
-        select: { id: true, isVerified: true }
-    })
-    return { 
-        exists: !!user,
-        verified: !!user?.isVerified
-    }
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+    select: { id: true, isVerified: true }
+  })
+  return {
+    exists: !!user,
+    verified: !!user?.isVerified
+  }
 }
